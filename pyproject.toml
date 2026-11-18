@@ -11,6 +11,9 @@ dependencies = [
     "shapely>=2.2.0",
 ]
 
+[project.scripts]
+vlm-floorplan = "vlm_floorplan.cli:main"
+
 [build-system]
 requires = ["uv_build>=0.11.16,<0.12"]
 build-backend = "uv_build"
@@ -40,7 +43,8 @@ default-groups = ["dev"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra --strict-markers"
+# Network tests are slow (Zenodo) and opt-in: `pytest -m network`.
+addopts = "-ra --strict-markers -m 'not network'"
 markers = [
     "network: needs internet access (dataset servers)",
     "hf: needs the ML group and the Qwen3.5-4B processor files (downloaded once from the Hugging Face Hub, then cached)",
