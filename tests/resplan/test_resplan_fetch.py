@@ -71,7 +71,7 @@ def test_fetch_skips_a_download_that_is_already_there(tmp_path: Path, offline: l
     dest.mkdir()
     (dest / fetch.PICKLE_NAME).write_bytes(b"existing")
     fetch.fetch_resplan(dest)
-    assert offline == []
+    assert offline == [fetch.REMOVED_URL]
     assert (dest / fetch.PICKLE_NAME).read_bytes() == b"existing"
 
 
@@ -109,3 +109,19 @@ def test_download_retries_a_connection_reset_midstream(
     fetch._download("https://example.invalid/file", target)
     assert len(attempts) == 2
     assert target.read_bytes() == b"payload"
+
+
+def test_download_does_not_retry_a_local_write_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    attempts: list[str] = []
+
+    def fake_urlopen(url: str, timeout: int) -> io.BytesIO:
+        attempts.append(url)
+        return io.BytesIO(b"payload")
+
+    monkeypatch.setattr(fetch.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(fetch, "BACKOFF_SECONDS", 0)
+    with pytest.raises(FileNotFoundError):
+        fetch._download("https://example.invalid/file", tmp_path / "missing" / "file")
+    assert len(attempts) == 1

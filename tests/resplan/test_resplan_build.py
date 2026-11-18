@@ -72,6 +72,20 @@ def test_excluded_ids_are_skipped_for_takedowns(data_dir: Path, tmp_path: Path) 
     assert not (out / "images" / "2.png").exists()
 
 
+def test_a_takedown_rebuild_drops_the_plan_from_splits_it_does_not_rebuild(
+    data_dir: Path, tmp_path: Path
+) -> None:
+    out = tmp_path / "out"
+    build(data_dir, BuildOptions(out_dir=out), splits=("train", "val", "test", "augmented"))
+    assert [record.id for record in _records(out / "augmented.jsonl")] == ["resplan/100"]
+    exclude = tmp_path / "exclude.txt"
+    exclude.write_text("100\n")
+    build(data_dir, BuildOptions(out_dir=out), exclude_ids=exclude)
+    assert _records(out / "augmented.jsonl") == []
+    assert not (out / "images" / "100.png").exists()
+    assert [record.id for record in _records(out / "train.jsonl")] == ["resplan/1", "resplan/2"]
+
+
 def test_a_plan_without_rooms_is_skipped_not_fatal(
     data_dir: Path, tmp_path: Path, make_plan: PlanMaker, capsys: pytest.CaptureFixture[str]
 ) -> None:

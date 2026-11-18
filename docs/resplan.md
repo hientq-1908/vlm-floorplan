@@ -143,6 +143,7 @@ The builder writes `ATTRIBUTION.txt` next to its output, and `THIRD_PARTY_NOTICE
 ResPlan's takedown policy (`TAKEDOWN.md`, downloaded next to the data) says that a plan is removed in the next release and its id is listed in `REMOVED.md`.
 Because we pin a release, we do not get that removal automatically.
 The fetch script therefore checks the upstream `main` branch for `REMOVED.md` and saves it next to the data when it exists.
+It does this on every run, even when the data is already downloaded, so run it again to pick up new removals.
 To honor it, write the removed ids to a file (one per line, `#` starts a comment) and run the builder with `--exclude-ids <file>`.
 Plans listed there are skipped, and their images are not written.
-To drop them from anything built earlier, rebuild into the same output folder: the builder deletes their images there.
+To drop them from anything built earlier, rebuild into the same output folder: the builder deletes their images there and drops their records from the JSONL files of splits it does not rebuild.

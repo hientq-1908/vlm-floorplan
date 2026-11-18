@@ -19,6 +19,7 @@ Records have the same shape as the CubiCasa5K ones, so one loader reads both.
 from __future__ import annotations
 
 import argparse
+import json
 import multiprocessing
 import os
 from dataclasses import dataclass
@@ -106,6 +107,19 @@ def select_plans(
     return chosen
 
 
+def drop_excluded_records(out_dir: Path, splits: tuple[str, ...], excluded: set[int]) -> None:
+    """Remove excluded plans from JSONL files of earlier builds whose split is not being rebuilt."""
+    excluded_record_ids = {f"{SOURCE_NAME}/{plan_id}" for plan_id in excluded}
+    for split in SPLIT_NAMES:
+        path = out_dir / f"{split}.jsonl"
+        if split in splits or not path.exists():
+            continue
+        lines = path.read_text(encoding="utf-8").splitlines()
+        kept = [line for line in lines if json.loads(line)["id"] not in excluded_record_ids]
+        if len(kept) < len(lines):
+            path.write_text("".join(line + "\n" for line in kept), encoding="utf-8")
+
+
 def build(
     data_dir: Path,
     options: BuildOptions,
@@ -126,6 +140,7 @@ def build(
     image_dir.mkdir(parents=True, exist_ok=True)
     for plan_id in excluded:
         (image_dir / f"{plan_id}.png").unlink(missing_ok=True)
+    drop_excluded_records(options.out_dir, splits, excluded)
     (options.out_dir / "ATTRIBUTION.txt").write_text(ATTRIBUTION, encoding="utf-8")
     jobs = [(plan, split, options) for plan, split in chosen]
     counts = dict.fromkeys(splits, 0)

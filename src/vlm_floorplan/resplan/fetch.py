@@ -53,7 +53,12 @@ def _download(url: str, target: Path) -> None:
             ):
                 shutil.copyfileobj(response, out, CHUNK_BYTES)
             return
-        except (OSError, http.client.HTTPException) as err:
+        except (
+            urllib.error.URLError,
+            TimeoutError,
+            ConnectionError,
+            http.client.HTTPException,
+        ) as err:
             if isinstance(err, urllib.error.HTTPError) and err.code < 500:
                 raise
             if attempt == MAX_ATTEMPTS:
@@ -106,6 +111,7 @@ def fetch_resplan(dest: Path = DEFAULT_DEST, force: bool = False) -> Path:
     pickle_path = dest / PICKLE_NAME
     if pickle_path.exists() and not force:
         print(f"{pickle_path} already exists (use --force to download again)")
+        _note_removed_plans(dest)
         return pickle_path
 
     for name in SMALL_FILES:
