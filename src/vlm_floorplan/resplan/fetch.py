@@ -95,11 +95,15 @@ def _note_removed_plans(dest: Path) -> None:
     try:
         _download(REMOVED_URL, partial)
         os.replace(partial, target)
-    except urllib.error.HTTPError as err:
-        if err.code != 404:
-            raise
-        target.unlink(missing_ok=True)
-        print("upstream lists no removed plans (REMOVED.md not found)")
+    except (urllib.error.URLError, RuntimeError) as err:
+        if isinstance(err, urllib.error.HTTPError) and err.code == 404:
+            target.unlink(missing_ok=True)
+            print("upstream lists no removed plans (REMOVED.md not found)")
+        else:
+            print(
+                f"warning: could not check upstream's removed plans ({err}); "
+                "any local REMOVED.md was kept. Run fetch again later to recheck."
+            )
         return
     finally:
         partial.unlink(missing_ok=True)
@@ -115,12 +119,7 @@ def fetch_resplan(dest: Path = DEFAULT_DEST, force: bool = False) -> Path:
     pickle_path = dest / PICKLE_NAME
     if pickle_path.exists() and not force:
         print(f"{pickle_path} already exists (use --force to download again)")
-        try:
-            _note_removed_plans(dest)
-        except (urllib.error.URLError, RuntimeError) as err:
-            print(
-                f"warning: could not recheck upstream's removed plans ({err}); kept the local copy"
-            )
+        _note_removed_plans(dest)
         return pickle_path
 
     for name in SMALL_FILES:

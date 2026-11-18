@@ -153,3 +153,24 @@ def test_a_404_recheck_removes_a_stale_removed_list(tmp_path: Path, offline: lis
     (dest / "REMOVED.md").write_text("123\n")
     fetch.fetch_resplan(dest)
     assert not (dest / "REMOVED.md").exists()
+
+
+def test_a_failed_removed_check_does_not_fail_the_first_download(
+    tmp_path: Path,
+    fake_zip: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(fetch, "ZIP_SHA256", hashlib.sha256(fake_zip.read_bytes()).hexdigest())
+
+    def fake_download(url: str, target: Path) -> None:
+        if url == fetch.REMOVED_URL:
+            raise urllib.error.HTTPError(url, 429, "Too Many Requests", None, None)  # type: ignore[arg-type]
+        target.write_bytes(fake_zip.read_bytes() if url == fetch.ZIP_URL else b"small file")
+
+    monkeypatch.setattr(fetch, "_download", fake_download)
+    dest = tmp_path / "data"
+    assert fetch.fetch_resplan(dest).read_bytes() == PICKLE_BYTES
+    out = capsys.readouterr().out
+    assert "warning" in out
+    assert "ResPlan ready" in out
