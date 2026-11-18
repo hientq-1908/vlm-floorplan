@@ -81,6 +81,34 @@ def _floor_two() -> str:
     return '<g class="Floorplan Floor-2">' + "".join(parts) + "</g>"
 
 
+def write_wall_cross_plan(plan_dir: Path) -> Path:
+    """Four 200 px rooms around a 15 px wall cross, as in many CubiCasa5K flats.
+
+        x:     0 ... 200 | 215 ... 415
+        y 0-200  kitchen | living
+        y 215-415 bedroom | dining
+
+    Each room faces two neighbours through a wall; the diagonal pairs (kitchen and
+    dining, living and bedroom) only meet at the junction and must stay unlinked.
+    """
+    plan_dir.mkdir(parents=True, exist_ok=True)
+    parts = [
+        _space("Space Kitchen", _rect(0, 0, 200, 200)),
+        _space("Space LivingRoom", _rect(215, 0, 415, 200)),
+        _space("Space Bedroom", _rect(0, 215, 200, 415)),
+        _space("Space Dining", _rect(215, 215, 415, 415)),
+        _wall(_rect(200, 0, 215, 415)),
+        _wall(_rect(0, 200, 415, 215)),
+    ]
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="415" height="415"><g class="Model">'
+        '<g class="Floorplan Floor-1">' + "".join(parts) + "</g></g></svg>"
+    )
+    (plan_dir / "model.svg").write_text(svg, encoding="utf-8")
+    Image.new("RGB", (415, 415), (255, 255, 255)).save(plan_dir / "F1_scaled.png")
+    return plan_dir
+
+
 def write_cubicasa_plan(plan_dir: Path, two_floors: bool = False) -> Path:
     """Write model.svg and F1_scaled.png into `plan_dir`; returns the directory."""
     plan_dir.mkdir(parents=True, exist_ok=True)

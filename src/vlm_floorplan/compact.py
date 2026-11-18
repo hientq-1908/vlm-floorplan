@@ -26,27 +26,24 @@ from typing import Any
 from vlm_floorplan.schema import Floor, FloorplanGraph, ImageSize, Link, Room
 
 
-def _room_to_compact(room: Room, include_bbox: bool) -> dict[str, Any]:
+def _room_to_compact(room: Room) -> dict[str, Any]:
     item: dict[str, Any] = {"id": room.id, "type": room.type.value}
     if room.label is not None:
         item["label"] = room.label
     item["xy"] = list(room.xy)
-    if include_bbox and room.bbox is not None:
+    if room.bbox is not None:
         item["bbox"] = list(room.bbox)
     if room.entrance:
         item["entrance"] = True
     return item
 
 
-def to_compact(graph: FloorplanGraph, *, include_bbox: bool = True) -> str:
-    """Serialize a graph to compact JSON text.
-
-    Pass `include_bbox=False` for a shorter target (about 12 tokens less per room).
-    """
+def to_compact(graph: FloorplanGraph) -> str:
+    """Serialize a graph to compact JSON text."""
     floors = [
         {
             "floor": floor.floor,
-            "rooms": [_room_to_compact(room, include_bbox) for room in floor.rooms],
+            "rooms": [_room_to_compact(room) for room in floor.rooms],
             "links": [[link.a, link.b, link.kind.value] for link in floor.links],
         }
         for floor in graph.floors
@@ -74,8 +71,10 @@ def from_compact(text: str, image: ImageSize) -> FloorplanGraph:
     not valid JSON or does not describe a valid graph.
     """
     data = json.loads(text)
-    if not isinstance(data, dict) or "floors" not in data:
+    if not isinstance(data, dict) or not isinstance(data.get("floors"), list):
         raise ValueError('compact graph must be a JSON object with a "floors" list')
+    if not all(isinstance(item, dict) for item in data["floors"]):
+        raise ValueError("every compact floor must be a JSON object")
     try:
         floors = [_floor_from_compact(item) for item in data["floors"]]
     except (KeyError, TypeError) as err:

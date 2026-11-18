@@ -37,8 +37,6 @@ class BuildOptions:
     split: str | None = None
     """Only plans of this split ("train", "val", "test"); None means every plan."""
     seed: int = 0
-    drop_mostly_unlabeled: bool = False
-    """Skip plans whose rooms are mostly `unknown` (they stay flagged either way)."""
 
 
 @dataclass
@@ -62,13 +60,6 @@ def _sample(items: list[T], options: BuildOptions) -> list[T]:
         return items
     chosen = sorted(random.Random(options.seed).sample(range(len(items)), options.limit))
     return [items[i] for i in chosen]
-
-
-def _keep(record: PlanRecord, options: BuildOptions, report: BuildReport) -> bool:
-    if options.drop_mostly_unlabeled and record.quality.mostly_unlabeled:
-        report.skipped.append((record.id, "mostly unlabeled"))
-        return False
-    return True
 
 
 def _cubicasa_splits(root: Path) -> dict[str, str]:
@@ -105,7 +96,6 @@ def build_cubicasa(options: BuildOptions) -> BuildReport:
         except CONVERSION_ERRORS as err:
             report.skipped.append((plan_id, f"{type(err).__name__}: {err}"))
             continue
-        if _keep(record, options, report):
-            records.append(with_relative_image(record, output))
+        records.append(with_relative_image(record, output))
     report.written = write_records(output, records)
     return report

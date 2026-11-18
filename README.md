@@ -65,7 +65,8 @@ The fetch script reads single plans with HTTP range requests, so it never downlo
 Zenodo is sometimes slow and answers 500 or 504 now and then.
 The script retries, and a second run skips files that are already on disk.
 
-Useful `build` options: `--split train|val|test`, `--limit N` (a seeded random subset), and `--drop-mostly-unlabeled`.
+Useful `build` options: `--split train|val|test` and `--limit N` (a seeded random subset).
+Plans with mostly unlabeled rooms are kept and flagged with `quality.mostly_unlabeled`; training-data assembly filters on that flag.
 
 In the overlay, a dot marks each room, colored by type.
 A hollow grey dot is a room whose type the dataset does not say (`unknown`).

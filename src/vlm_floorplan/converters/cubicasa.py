@@ -7,10 +7,16 @@ pixels, where walls are about 15 px thick):
 - door link: grow the door polygon by 6 px and intersect it with every room;
   the two rooms with the largest overlap are linked. If only one room is hit
   and the door's wall is exterior, that room is an entrance.
-- opening link: two rooms closer than 3 px (no wall between them) that share
-  at least 20 px of boundary, e.g. an open-plan kitchen and living room.
-- wall link: two rooms within 30 px of each other, sharing at least 20 px of
-  boundary, with walls covering at least 20 % of the gap between them.
+- opening link: two rooms closer than 3 px (no wall between them) that face
+  each other along at least 20 px of boundary, e.g. an open-plan kitchen and
+  living room.
+- wall link: two rooms within 30 px of each other, facing each other along at
+  least 20 px of boundary, with walls covering at least 20 % of the gap between them.
+
+"Facing" means straight across: a stretch of one room's outline counts only if
+the other room lies ahead of it along its outward normal. Four rooms around a
+wall cross are close to their diagonal neighbour too, but face it along nothing,
+so the diagonal pairs stay unlinked.
 
 Only doors whose parent group is a Wall count: CubiCasa5K also draws fridge and
 cabinet doors, and 86 % of plans have at least one.
@@ -21,16 +27,18 @@ holds one graph per floor and never links rooms across floors.
 
 from __future__ import annotations
 
-from itertools import combinations
+import math
+from itertools import combinations, pairwise
 from pathlib import Path
 
 from PIL import Image
 from shapely.geometry import Polygon
+from shapely.geometry.polygon import orient
 from shapely.ops import unary_union
 
 from vlm_floorplan.converters.assemble import SourceFloor, SourceRoom, assemble
 from vlm_floorplan.converters.cubicasa_svg import SvgFloor, parse_svg
-from vlm_floorplan.geometry import GridFrame, largest_polygon
+from vlm_floorplan.geometry import GridFrame, largest_polygon, polygon_parts
 from vlm_floorplan.record import PlanRecord
 from vlm_floorplan.room_types import cubicasa_room_type
 from vlm_floorplan.schema import ImageSize, LinkKind
@@ -91,9 +99,39 @@ def _link_doors(floor: SourceFloor, svg_floor: SvgFloor, warnings: list[str]) ->
             warnings.append(f"floor {svg_floor.number}: door touching {len(hits)} room(s) skipped")
 
 
-def _shared_length(a: Polygon, b: Polygon, gap: float) -> float:
-    """Length of a's outline that lies within `gap` of b."""
-    return a.boundary.intersection(b.buffer(gap)).length
+def _facing_length(a: Polygon, b: Polygon, gap: float) -> float:
+    """Length of a's outline that faces b across at most `gap` px.
+
+    For each edge of a, the rectangle `gap` px deep in front of it is intersected
+    with b, and the hit is projected back onto the edge.
+    """
+    coords = list(orient(a, sign=1.0).exterior.coords)  # counter-clockwise
+    total = 0.0
+    for (x0, y0), (x1, y1) in pairwise(coords):
+        length = math.hypot(x1 - x0, y1 - y0)
+        if length == 0:
+            continue
+        ux, uy = (x1 - x0) / length, (y1 - y0) / length
+        nx, ny = uy, -ux  # outward normal: right of a counter-clockwise edge
+        front = Polygon(
+            [(x0, y0), (x1, y1), (x1 + nx * gap, y1 + ny * gap), (x0 + nx * gap, y0 + ny * gap)]
+        )
+        spans = []
+        for piece in polygon_parts(front.intersection(b)):
+            ts = [(x - x0) * ux + (y - y0) * uy for x, y in piece.exterior.coords]
+            spans.append((min(ts), max(ts)))
+        total += _union_length(spans)
+    return total
+
+
+def _union_length(spans: list[tuple[float, float]]) -> float:
+    """Total length covered by possibly overlapping intervals."""
+    total, reach = 0.0, -math.inf
+    for start, end in sorted(spans):
+        if end > reach:
+            total += end - max(start, reach)
+            reach = end
+    return total
 
 
 def _wall_cover(a: Polygon, b: Polygon, walls: Polygon) -> float:
@@ -114,11 +152,11 @@ def _link_neighbours(floor: SourceFloor, svg_floor: SvgFloor) -> None:
             continue
         if (
             distance <= OPENING_MAX_GAP_PX
-            and _shared_length(a, b, OPENING_MAX_GAP_PX) >= MIN_SHARED_PX
+            and _facing_length(a, b, OPENING_MAX_GAP_PX) >= MIN_SHARED_PX
         ):
             floor.link(i, j, LinkKind.OPENING)
         elif (
-            _shared_length(a, b, WALL_MAX_GAP_PX) >= MIN_SHARED_PX
+            _facing_length(a, b, WALL_MAX_GAP_PX) >= MIN_SHARED_PX
             and _wall_cover(a, b, walls) >= MIN_WALL_COVER
         ):
             floor.link(i, j, LinkKind.WALL)

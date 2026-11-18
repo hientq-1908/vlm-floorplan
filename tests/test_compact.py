@@ -33,18 +33,15 @@ def test_compact_form_is_minimal() -> None:
     assert "KÄYTÄVÄ" in text  # not escaped to Ä
 
 
-def test_bbox_can_be_left_out_and_then_parses_without_it() -> None:
-    graph = sample_graph()
-    text = to_compact(graph, include_bbox=False)
-    assert "bbox" not in text
-    assert from_compact(text, graph.image).floors[0].rooms[1].bbox is None
-
-
 @pytest.mark.parametrize(
     "text",
     [
         "not json",
         "[]",
+        '{"floors":1}',
+        '{"floors":"ab"}',
+        '{"floors":[1]}',
+        '{"floors":[[]]}',
         '{"rooms": []}',
         '{"floors":[{"rooms":[],"links":[]}]}',  # no floor number
         '{"floors":[{"floor":1,"rooms":[],"links":[["r0","r1"]]}]}',  # malformed link

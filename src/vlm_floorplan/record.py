@@ -8,7 +8,8 @@ never produces:
 - the dataset's original room class (the graph only has the coarse type),
 - room polygons, so evaluation can match a predicted point to the room whose
   polygon contains it, with no matching heuristic,
-- quality flags, so mostly-unlabeled plans can be dropped or down-weighted.
+- quality flags, so training-data assembly can filter or down-weight
+  mostly-unlabeled plans.
 
 Records are stored one per line in JSONL files (see `vlm_floorplan.data.build`).
 """

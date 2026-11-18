@@ -165,8 +165,8 @@ RESPLAN_TYPES: dict[str, RoomType] = {
     "stair": T.STAIRS,
 }
 
-# MSD (Modified Swiss Dwellings) room types. The MSD converter is a later milestone;
-# the table lives here so the tests can prove the coarse set already covers MSD.
+# MSD (Modified Swiss Dwellings) room types. The ResPlan and MSD converters are
+# being built in parallel tasks on this schema and consume these tables.
 MSD_TYPES: dict[str, RoomType] = {
     "Bedroom": T.BEDROOM,
     "Livingroom": T.LIVING,

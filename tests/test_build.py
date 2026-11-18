@@ -55,7 +55,7 @@ def test_broken_plans_are_skipped_and_reported(tmp_path: Path) -> None:
     assert "ParseError" in report.skipped[0][1]
 
 
-def test_mostly_unlabeled_plans_can_be_dropped(tmp_path: Path) -> None:
+def test_mostly_unlabeled_plans_are_kept_and_flagged(tmp_path: Path) -> None:
     data = _fetched_dataset(tmp_path)
     svg = data / "cubicasa5k" / "colorful" / "1" / "model.svg"
     svg.write_text(
@@ -70,11 +70,6 @@ def test_mostly_unlabeled_plans_can_be_dropped(tmp_path: Path) -> None:
     assert kept.written == 3
     flagged = next(r for r in read_records(kept.output) if r.id.endswith("colorful/1"))
     assert flagged.quality.mostly_unlabeled
-    dropped = build_cubicasa(
-        BuildOptions(data_dir=data, out_dir=tmp_path / "b", drop_mostly_unlabeled=True)
-    )
-    assert dropped.written == 2
-    assert ("cubicasa5k/colorful/1", "mostly unlabeled") in dropped.skipped
 
 
 def test_jsonl_round_trip_is_lossless(tmp_path: Path, cubicasa_record: PlanRecord) -> None:

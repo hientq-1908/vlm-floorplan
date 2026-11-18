@@ -57,7 +57,6 @@ def _build_parser() -> argparse.ArgumentParser:
     build.add_argument("--limit", type=int)
     build.add_argument("--split", choices=["train", "val", "test"])
     build.add_argument("--seed", type=int, default=0)
-    build.add_argument("--drop-mostly-unlabeled", action="store_true")
 
     view = commands.add_parser("view", help="draw one plan's graph over its image (PNG)")
     view.add_argument("jsonl", type=Path)
@@ -86,7 +85,6 @@ def _run_build(args: argparse.Namespace) -> None:
         limit=args.limit,
         split=args.split,
         seed=args.seed,
-        drop_mostly_unlabeled=args.drop_mostly_unlabeled,
     )
     print(build_cubicasa(options).summary())
 

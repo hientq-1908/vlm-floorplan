@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from cubicasa_fixture import HEIGHT, WIDTH, write_cubicasa_plan
+from cubicasa_fixture import HEIGHT, WIDTH, write_cubicasa_plan, write_wall_cross_plan
 
 from vlm_floorplan.compact import from_compact, to_compact
 from vlm_floorplan.converters.cubicasa import convert_plan
@@ -59,6 +59,21 @@ def test_rooms_separated_only_by_a_wall_get_a_wall_link(cubicasa_record: PlanRec
     rooms = _by_type(cubicasa_record)
     pair = frozenset({rooms["kitchen"].id, rooms["bedroom"].id})
     assert _links(cubicasa_record)[pair] == LinkKind.WALL
+
+
+def test_rooms_meeting_only_diagonally_at_a_wall_cross_are_not_linked(tmp_path: Path) -> None:
+    record = convert_plan(write_wall_cross_plan(tmp_path / "p"), "cubicasa5k/x/1")
+    rooms = _by_type(record)
+
+    def pair(first: str, second: str) -> frozenset[str]:
+        return frozenset({rooms[first].id, rooms[second].id})
+
+    assert _links(record) == {
+        pair("kitchen", "living"): LinkKind.WALL,
+        pair("kitchen", "bedroom"): LinkKind.WALL,
+        pair("living", "dining"): LinkKind.WALL,
+        pair("bedroom", "dining"): LinkKind.WALL,
+    }
 
 
 def test_distant_rooms_are_not_linked(cubicasa_record: PlanRecord) -> None:
