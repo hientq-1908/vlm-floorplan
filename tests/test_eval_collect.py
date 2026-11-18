@@ -16,6 +16,7 @@ from vlm_floorplan.evaluation.collect import (
     ConsoleLog,
     DownloadVerificationError,
     RemoteArtifact,
+    TaskNotFinishedError,
     collect_and_delete,
 )
 
@@ -162,3 +163,14 @@ def test_existing_destination_is_never_overwritten(tmp_path: Path) -> None:
         collect_and_delete(task, dest)
     assert not task.deleted
     assert (dest / "precious.txt").read_text() == "keep"
+
+
+@pytest.mark.parametrize("status", ["queued", "in_progress", "created"])
+def test_unfinished_task_is_refused_before_download_or_deletion(
+    tmp_path: Path, status: str
+) -> None:
+    task = FakeTask({}, status=status, log_text="still generating\n")
+    with pytest.raises(TaskNotFinishedError, match=status):
+        collect_and_delete(task, tmp_path / "out")
+    assert not task.deleted
+    assert not (tmp_path / "out").exists()

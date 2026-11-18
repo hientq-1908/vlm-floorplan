@@ -133,6 +133,34 @@ def test_rerun_resumes_without_calling_the_model_again(split: Path, tmp_path: Pa
     assert len((run_dir / "outputs.jsonl").read_text().splitlines()) == 1
 
 
+def test_resume_retries_failed_plans_and_scores_only_the_retry(split: Path, tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    config = config_for(split)
+    collect_outputs(config, FakeClient([ApiError("server restarting")]), run_dir)
+    retry = FakeClient([reply(to_compact(gt_record().graph))])
+    records = collect_outputs(config, retry, run_dir)
+    assert len(retry.requests) == 1
+    summary = score_run(run_dir, records)
+    assert summary["n_plans"] == 1
+    assert summary["overall"]["validity_rate"] == 1.0
+    assert summary["parse"]["error_counts"] == {}
+
+
+def test_unreadable_image_is_recorded_per_plan_not_fatal(split: Path, tmp_path: Path) -> None:
+    second = gt_record().model_copy(update={"id": "synthetic/broken", "image": "broken.png"})
+    (split.parent / "broken.png").write_bytes(b"not a png")
+    with split.open("a") as handle:
+        handle.write(second.model_dump_json() + "\n")
+    run_dir = tmp_path / "run"
+    client = FakeClient([reply(to_compact(gt_record().graph))])
+    records = collect_outputs(config_for(split), client, run_dir)
+    summary = score_run(run_dir, records)
+    assert len(client.requests) == 1
+    assert summary["n_plans"] == 2
+    assert summary["overall"]["validity_rate"] == 0.5
+    assert summary["parse"]["error_counts"] == {"input_error": 1}
+
+
 def test_existing_run_dir_with_other_settings_is_refused(split: Path, tmp_path: Path) -> None:
     run_dir = tmp_path / "run"
     collect_outputs(config_for(split, max_long_side=768), FakeClient([reply("{}")]), run_dir)

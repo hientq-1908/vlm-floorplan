@@ -32,7 +32,7 @@ from vlm_floorplan.evaluation.baseline_spec import (
     pack_split,
 )
 from vlm_floorplan.evaluation.collect import (
-    COMPLETED,
+    FINISHED_STATUSES,
     CollectReport,
     ConsoleLog,
     DownloadVerificationError,
@@ -43,7 +43,6 @@ from vlm_floorplan.evaluation.collect import (
 REPO_ROOT = Path(__file__).resolve().parents[3]
 JOB_SCRIPT = "scripts/baseline_job.py"
 REQUIREMENTS = "deploy/vllm/requirements-baseline.txt"
-FINISHED_STATUSES = {COMPLETED, "failed", "stopped", "closed", "published"}
 CONSOLE_LOG_EVENTS = 10_000
 
 

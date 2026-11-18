@@ -41,6 +41,8 @@ log = logging.getLogger("baseline_job")
 SERVER_START_TIMEOUT_S = 1800.0
 """Model download plus load can take a while on a cold machine."""
 SERVER_POLL_S = 5.0
+REQUEST_TIMEOUT_S = 1800.0
+"""Thinking mode can generate for many minutes on one plan."""
 SERVE_SCRIPT = Path(__file__).resolve().parents[3] / "deploy" / "vllm" / "serve.sh"
 
 
@@ -82,6 +84,7 @@ def run_baseline(
             max_tokens=spec.max_tokens,
             limit=spec.limit,
             concurrency=spec.concurrency,
+            timeout_s=REQUEST_TIMEOUT_S,
         )
         run_dir = out_dir / name
         try:
@@ -173,7 +176,7 @@ def run_job(spec: BaselineSpec, split: Path, out_dir: Path, archive: Path) -> di
     result: dict[str, Any] = {"runs": [], "scores": {}, "errors": {}}
     try:
         with vllm_server(spec, out_dir / "vllm.log") as base_url:
-            client = HttpChatClient(base_url, timeout_s=1800.0)
+            client = HttpChatClient(base_url, timeout_s=REQUEST_TIMEOUT_S)
             result = run_baseline(spec, split, out_dir, client, base_url)
     except Exception as err:  # the bundle below must still be written
         log.exception("job failed before or during evaluation")

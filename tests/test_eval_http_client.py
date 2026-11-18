@@ -18,6 +18,12 @@ OK_BODY = {
 }
 
 
+DROP_BEFORE_REPLY = -1
+"""Close the socket without answering, as a crashed or restarted server does."""
+DROP_MID_BODY = -2
+"""Promise a longer body than is sent, then close: the reply is cut off mid-read."""
+
+
 class Handler(BaseHTTPRequestHandler):
     statuses: list[int] = []
     seen: list[dict] = []
@@ -32,6 +38,16 @@ class Handler(BaseHTTPRequestHandler):
             }
         )
         status = Handler.statuses.pop(0) if Handler.statuses else 200
+        if status == DROP_BEFORE_REPLY:
+            self.close_connection = True
+            return
+        if status == DROP_MID_BODY:
+            self.send_response(200)
+            self.send_header("Content-Length", "1000")
+            self.end_headers()
+            self.wfile.write(b'{"choices": ')
+            self.close_connection = True
+            return
         payload = json.dumps(OK_BODY if status == 200 else {"error": "x"}).encode()
         self.send_response(status)
         self.send_header("Content-Length", str(len(payload)))
@@ -67,6 +83,19 @@ def test_transient_server_errors_are_retried(base_url: str) -> None:
     Handler.statuses = [503, 429]
     assert HttpChatClient(base_url).complete({}).content == "hi"
     assert len(Handler.seen) == 3
+
+
+@pytest.mark.parametrize("drop", [DROP_BEFORE_REPLY, DROP_MID_BODY])
+def test_dropped_connections_are_retried(base_url: str, drop: int) -> None:
+    Handler.statuses = [drop]
+    assert HttpChatClient(base_url).complete({}).content == "hi"
+    assert len(Handler.seen) == 2
+
+
+def test_dropped_connections_that_persist_become_api_error(base_url: str) -> None:
+    Handler.statuses = [DROP_BEFORE_REPLY] * client_module.MAX_ATTEMPTS
+    with pytest.raises(ApiError, match="failed after retries"):
+        HttpChatClient(base_url).complete({})
 
 
 def test_client_errors_are_not_retried(base_url: str) -> None:

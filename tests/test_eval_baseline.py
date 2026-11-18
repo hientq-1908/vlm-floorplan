@@ -105,6 +105,13 @@ def test_api_failures_are_scored_not_fatal(split: Path, tmp_path: Path) -> None:
     assert result["scores"]["long-side-768"]["validity_rate"] == 0.0
 
 
+def test_each_run_records_the_request_timeout_the_job_uses(split: Path, tmp_path: Path) -> None:
+    spec = BaselineSpec(run_name="r", resolutions=[768], concurrency=1)
+    out = tmp_path / "out"
+    run_baseline(spec, split, out, GoodClient(), "http://unused/v1")
+    assert json.loads((out / "long-side-768" / "config.json").read_text())["timeout_s"] == 1800.0
+
+
 def test_runs_dir_default_and_override(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.delenv(RUNS_DIR_ENV, raising=False)
     assert default_runs_dir() == Path.home() / "Documents/pets/vlm-floorplan-runs"

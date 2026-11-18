@@ -42,12 +42,13 @@ Use `--thinking server-default` for endpoints that reject `chat_template_kwargs`
 | `prompt.txt` | The exact prompt. |
 | `inputs/images/` | The exact pixels sent, one PNG per plan. |
 | `inputs.jsonl` | Per plan: sizes before and after resizing, and the request (image elided). |
-| `outputs.jsonl` | Per plan: content, reasoning, finish reason, token counts, latency, or an `api_error`. |
+| `outputs.jsonl` | Per plan: content, reasoning, finish reason, token counts, latency, or an `api_error` or `input_error`. |
 | `per_plan.jsonl` | Per plan: parse result, parsed graph, metric counts. |
 | `metrics.json` | Aggregate scores, scores by plan size, parse-error counts, token and latency statistics. |
 | `MANIFEST.json` | SHA-256 of every other file. |
 
-Re-running a command on the same run directory resumes it: plans already in `outputs.jsonl` are skipped.
+Re-running a command on the same run directory resumes it: plans that already have a reply in `outputs.jsonl` are skipped.
+Plans that failed with an `api_error` or `input_error` are tried again, and scoring uses the last row per plan, so a retry replaces the failure.
 A run directory with different model or prompt settings is refused, so two experiments never mix.
 The server URL, concurrency and limit may change between resumes.
 
@@ -113,8 +114,8 @@ Leniency is recorded in `ParseResult.lenient`, so the strict validity rate shows
 
 Failures get exactly one category: `empty`, `no_json`, `truncated`, `invalid_json`, `wrong_shape` or `schema_invalid`.
 A reply that stopped because of `max_tokens` and holds no graph is reported as `truncated`, whatever its text looks like.
-A failed API call is its own category, `api_error`.
-Both count as invalid outputs.
+A failed API call is its own category, `api_error`, and an image that cannot be loaded is `input_error`.
+All of these count as invalid outputs.
 
 ## The zero-shot baseline job
 
@@ -165,6 +166,7 @@ The collector deletes the task only after every check passes:
 4. A completed task has the result archive and one `metrics.json` per expected resolution.
 5. Task details, scalars and the console log are saved.
 
+A task that is still queued or running is refused before anything is downloaded, because deleting it would kill the job.
 If any check fails, the task is kept and the command exits with status 2.
 A failed or stopped task is downloaded the same way (its logs are the point) and deleted afterwards.
 A download directory that already has files is never overwritten.

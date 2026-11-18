@@ -14,8 +14,10 @@ Run directory:
     <run>/per_plan.jsonl    per plan: parse result and metrics   (scoring.py)
     <run>/metrics.json      aggregate scores and breakdowns      (scoring.py)
 
-A run can be resumed: plans already in `outputs.jsonl` are skipped.
-Failed API calls are recorded as outputs with an `api_error` and count as invalid.
+Failed API calls are recorded as outputs with an `api_error`, and images that cannot be
+loaded as outputs with an `input_error`; both count as invalid.
+A run can be resumed: plans with a reply in `outputs.jsonl` are skipped, while failed
+plans are tried again. Scoring reads the last row per plan, so a retry replaces a failure.
 """
 
 from __future__ import annotations
@@ -35,6 +37,8 @@ from vlm_floorplan.evaluation.run_dir import append_jsonl, read_jsonl, safe_name
 from vlm_floorplan.record import PlanRecord
 
 IMAGE_PLACEHOLDER = "<image: see inputs/images/{name}.png>"
+FAILURE_KEYS = ("api_error", "input_error")
+"""Output-row keys that mark a plan with no model reply; such plans are retried on resume."""
 
 
 def load_records(split: Path, limit: int | None = None) -> list[PlanRecord]:
@@ -138,17 +142,25 @@ def collect_outputs(config: EvalConfig, client: ChatClient, run_dir: Path) -> li
     records = load_records(split, config.limit)
     prepare_run_dir(config, run_dir)
     prompt = build_prompt()
-    done = {row["plan_id"] for row in read_jsonl(run_dir / "outputs.jsonl")}
+    done = {
+        row["plan_id"]
+        for row in read_jsonl(run_dir / "outputs.jsonl")
+        if not any(key in row for key in FAILURE_KEYS)
+    }
     todo = [record for record in records if record.id not in done]
 
-    def work(record: PlanRecord) -> tuple[dict[str, Any], dict[str, Any]]:
-        input_row, request = _prepare_input(record, split.parent, config, run_dir, prompt)
+    def work(record: PlanRecord) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+        try:
+            input_row, request = _prepare_input(record, split.parent, config, run_dir, prompt)
+        except (OSError, ValueError, Image.DecompressionBombError) as err:
+            return None, {"plan_id": record.id, "input_error": f"{type(err).__name__}: {err}"}
         return input_row, _call(client, record.id, request)
 
     # Threads, not processes: the work is waiting on the server, and vLLM batches
     # concurrent requests, so concurrency is what keeps the GPU busy.
     with ThreadPoolExecutor(max_workers=config.concurrency) as pool:
         for input_row, output_row in pool.map(work, todo):
-            append_jsonl(run_dir / "inputs.jsonl", input_row)
+            if input_row is not None:
+                append_jsonl(run_dir / "inputs.jsonl", input_row)
             append_jsonl(run_dir / "outputs.jsonl", output_row)
     return records

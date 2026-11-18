@@ -31,12 +31,18 @@ from vlm_floorplan.evaluation.baseline_spec import RESULT_ARTIFACT
 from vlm_floorplan.evaluation.run_dir import verify_manifest
 
 COMPLETED = "completed"
+FINISHED_STATUSES = frozenset({COMPLETED, "failed", "stopped", "closed", "published"})
+"""ClearML statuses after which the task no longer runs. Anything else may still be working."""
 VERIFIED_MARKER = "DOWNLOAD_VERIFIED.json"
 EXPECTED_RUNS_FILE = "job_summary.json"
 
 
 class DownloadVerificationError(RuntimeError):
     """The local copy is incomplete or corrupt. The remote task was NOT deleted."""
+
+
+class TaskNotFinishedError(DownloadVerificationError):
+    """The task is still queued or running. Nothing was downloaded or deleted."""
 
 
 @dataclass(frozen=True)
@@ -125,13 +131,16 @@ def collect_and_delete(
 
     Raises `DownloadVerificationError` (and leaves the task alone) when anything is off.
     Failed or stopped tasks are downloaded too, since their logs are the point; they
-    only need the logs, not the result archive.
+    only need the logs, not the result archive. A task that has not finished is refused
+    before anything is touched, since deleting it would kill the job.
     """
+    status = task.status()
+    if status not in FINISHED_STATUSES:
+        raise TaskNotFinishedError(f"task {task.task_id} is {status!r}; collect it once it ends")
     if dest.exists() and any(dest.iterdir()):
         raise FileExistsError(f"{dest} already has files; choose another run name")
     dest.mkdir(parents=True, exist_ok=True)
 
-    status = task.status()
     checks: list[str] = []
     _write_json(dest / "task.json", task.details())
     _write_json(dest / "scalars.json", task.scalars())

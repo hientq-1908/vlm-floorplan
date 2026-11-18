@@ -13,18 +13,22 @@ from typing import Any
 
 from vlm_floorplan.compact import to_compact
 from vlm_floorplan.evaluation.aggregate import aggregate, aggregate_by_size
+from vlm_floorplan.evaluation.harness import FAILURE_KEYS
 from vlm_floorplan.evaluation.metrics import PlanMetrics, evaluate_plan
 from vlm_floorplan.evaluation.parser import ParseError, ParseResult, parse_model_output
 from vlm_floorplan.evaluation.run_dir import read_jsonl, write_manifest
 from vlm_floorplan.record import PlanRecord
 
-API_ERROR = "api_error"
-"""Error category for a plan whose request never produced a reply."""
+
+def _failure_key(output: dict[str, Any]) -> str | None:
+    """`api_error` or `input_error` when the plan never got a reply; it is also the category."""
+    return next((key for key in FAILURE_KEYS if key in output), None)
 
 
 def _parse_row(output: dict[str, Any], record: PlanRecord) -> ParseResult:
-    if "api_error" in output:
-        return ParseResult(graph=None, error=None, detail=output["api_error"])
+    failure = _failure_key(output)
+    if failure is not None:
+        return ParseResult(graph=None, error=None, detail=output[failure])
     result = parse_model_output(output.get("content"), record.graph.image, output.get("reasoning"))
     # A reply cut off by max_tokens can still hold a parseable graph, but if it did not,
     # "truncated" is the true cause even when the text happens to lack an open brace.
@@ -42,7 +46,7 @@ def _parse_row(output: dict[str, Any], record: PlanRecord) -> ParseResult:
 def _error_name(result: ParseResult, output: dict[str, Any]) -> str | None:
     if result.ok:
         return None
-    return API_ERROR if "api_error" in output else str(result.error)
+    return _failure_key(output) or str(result.error)
 
 
 def _token_stats(outputs: list[dict[str, Any]]) -> dict[str, Any]:
@@ -61,7 +65,9 @@ def _token_stats(outputs: list[dict[str, Any]]) -> dict[str, Any]:
 def score_run(run_dir: Path, records: list[PlanRecord]) -> dict[str, Any]:
     """Score every plan in `outputs.jsonl` and write the result files."""
     by_id = {record.id: record for record in records}
-    outputs = [row for row in read_jsonl(run_dir / "outputs.jsonl") if row["plan_id"] in by_id]
+    # A resumed run appends a retry after the failed row, so the last row per plan wins.
+    latest = {row["plan_id"]: row for row in read_jsonl(run_dir / "outputs.jsonl")}
+    outputs = [row for plan_id, row in latest.items() if plan_id in by_id]
     per_plan: list[dict[str, Any]] = []
     metrics: list[PlanMetrics] = []
     parse_results: list[ParseResult] = []

@@ -10,6 +10,7 @@ a run directory.
 
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import time
@@ -91,7 +92,9 @@ class HttpChatClient:
                 last_error = ApiError(f"HTTP {err.code}: {err.read()[:300]!r}")
                 if err.code not in RETRY_STATUS:
                     break
-            except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as err:
+            # urllib wraps only errors raised while sending; a dropped connection while
+            # waiting for or reading the reply arrives as a raw OSError or HTTPException.
+            except (OSError, http.client.HTTPException, json.JSONDecodeError) as err:
                 last_error = ApiError(f"{type(err).__name__}: {err}")
             time.sleep(BACKOFF_SECONDS * 2**attempt)
         raise ApiError(f"{self.url} failed after retries: {last_error}")
