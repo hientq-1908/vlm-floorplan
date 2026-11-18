@@ -53,7 +53,7 @@ That is why `PlanRecord` keeps the room polygons even though the model only outp
 
 **`bbox` is optional.**
 It costs about 12 tokens per room and helps the grounding metric and the UI.
-The compact serializer can leave it out.
+The compact serializer writes it whenever a room has one.
 
 **Links have three kinds: `door`, `opening` and `wall`.**
 `door` and `opening` are both needed because open-plan areas are common: a kitchen, dining area and living room are often separate polygons with no wall between them.
@@ -121,8 +121,8 @@ They do not match `F1_original.png`.
 | Rooms | Each `Space` group is a room. Its polygon is repaired with `make_valid`, and the largest part is kept. |
 | Door link | Only doors whose parent is a wall count. Grow the door polygon by 6 px, and link the two rooms it overlaps most. |
 | Entrance | If a door on an external wall touches only one room, that room is an entrance. |
-| Opening link | Two rooms less than 3 px apart that share at least 20 px of boundary. |
-| Wall link | Two rooms within 30 px that share at least 20 px of boundary, where walls cover at least 20% of the gap. |
+| Opening link | Two rooms less than 3 px apart that face each other along at least 20 px of boundary. |
+| Wall link | Two rooms within 30 px that face each other along at least 20 px of boundary, where walls cover at least 20% of the gap. Facing means straight across, so rooms that only meet diagonally at a wall cross are not linked. |
 | Position | `representative_point()` of the polygon, scaled to the 0 to 1000 grid by the image width and height. |
 
 A pair gets the strongest link found: door beats opening, and opening beats wall (`converters/assemble.py`).
