@@ -93,6 +93,18 @@ Two deliberate differences from upstream:
 Against upstream's `plan_to_graph` on the first 400 plans, 2,829 of 2,848 `via_door` edges came out as `door`.
 The rest are the "exactly two rooms" rule.
 
+### Results on the full dataset
+
+A full build of all 17,000 plans (including the `augmented` split) gave:
+
+- 8.2 rooms per plan on average (at most 22) and 11.8 links (at most 36).
+- Links: 117,883 door, 75,694 wall and 6,682 opening.
+- Exactly one entrance room in 16,989 plans. 11 plans have none: 5 have no front door, and 6 have a front door that touches no room.
+- 112 plans have a room with no link, listed in `quality.warnings`.
+- Every record loads as a `PlanRecord`, every graph survives a compact-JSON round trip, and every image has the size the graph states.
+- The pixel under a room's point has the room's fill color for 99.7 % of rooms.
+  The rest are thin rooms where a door or window covers the point.
+
 ### Room ids are in reading order
 
 `r0` is the top-most room (ties go left to right), by the room's point.
@@ -107,7 +119,8 @@ ResPlan plans are single-floor, so every graph has one floor, numbered 1.
 - A window between two interior rooms is promoted to a door, as upstream does.
   When a room polygon overlaps its neighbour at a window, that gives a door where the plan really has an open boundary.
   It is rare, and we kept upstream's rule so the door links stay comparable to the published graphs.
-- The renders are clean and synthetic. Use `--labels` to draw English type names on them, which real plans have in some other language.
+- The renders are clean and synthetic.
+  `--labels` draws English type names, but real plans print names in their local language (Finnish for CubiCasa5K), so labels are a style difference too.
 - Plan coordinates are in ResPlan's plan units (at most 256 across), and the thresholds in `links.py` are in those units.
 
 ## Loading the pickle safely
