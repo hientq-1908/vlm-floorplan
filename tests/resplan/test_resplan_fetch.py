@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import urllib.error
 import zipfile
 from pathlib import Path
@@ -72,3 +73,39 @@ def test_fetch_skips_a_download_that_is_already_there(tmp_path: Path, offline: l
     fetch.fetch_resplan(dest)
     assert offline == []
     assert (dest / fetch.PICKLE_NAME).read_bytes() == b"existing"
+
+
+def test_an_interrupted_extract_leaves_no_pickle_behind(
+    tmp_path: Path, fake_zip: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fail_midway(source: object, target: io.BufferedWriter, length: int) -> None:
+        target.write(b"truncated")
+        raise OSError("disk full")
+
+    monkeypatch.setattr(fetch.shutil, "copyfileobj", fail_midway)
+    with pytest.raises(OSError, match="disk full"):
+        fetch.extract_pickle(fake_zip, tmp_path)
+    assert not (tmp_path / fetch.PICKLE_NAME).exists()
+
+
+def test_download_retries_a_connection_reset_midstream(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    attempts: list[int] = []
+
+    class FlakyResponse(io.BytesIO):
+        def read(self, size: int | None = -1) -> bytes:
+            if len(attempts) == 1:
+                raise ConnectionResetError("reset by peer")
+            return super().read(size)
+
+    def fake_urlopen(url: str, timeout: int) -> FlakyResponse:
+        attempts.append(1)
+        return FlakyResponse(b"payload")
+
+    monkeypatch.setattr(fetch.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(fetch, "BACKOFF_SECONDS", 0)
+    target = tmp_path / "file"
+    fetch._download("https://example.invalid/file", target)
+    assert len(attempts) == 2
+    assert target.read_bytes() == b"payload"

@@ -62,12 +62,13 @@ def build_record(
 ) -> tuple[PlanRecord | None, str | None]:
     """Convert and render one plan, saving its PNG. Returns (record, None) or (None, reason)."""
     plan_id = plan["id"]
+    image_name = f"{IMAGE_DIR}/{plan_id}.png"
     try:
         view = PlanView.for_plan(plan, long_side=options.long_side)
         converted = convert_plan(plan, view)
     except ValueError as err:
+        (options.out_dir / image_name).unlink(missing_ok=True)
         return None, f"plan {plan_id} skipped: {err}"
-    image_name = f"{IMAGE_DIR}/{plan_id}.png"
     labels = _labels(converted) if options.labels else None
     style = RenderStyle(long_side=options.long_side)
     render_plan(plan, view, style, labels).save(options.out_dir / image_name)
@@ -116,11 +117,15 @@ def build(
     """Write images and JSONL files. Returns the number of records written per split."""
     plans = load_plans(data_dir / "ResPlan.pkl")
     split_of = load_splits(data_dir / "split.json")
-    chosen = select_plans(plans, split_of, splits, load_excluded_ids(exclude_ids))
+    excluded = load_excluded_ids(exclude_ids)
+    chosen = select_plans(plans, split_of, splits, excluded)
     if limit is not None:
         chosen = chosen[:limit]
 
-    (options.out_dir / IMAGE_DIR).mkdir(parents=True, exist_ok=True)
+    image_dir = options.out_dir / IMAGE_DIR
+    image_dir.mkdir(parents=True, exist_ok=True)
+    for plan_id in excluded:
+        (image_dir / f"{plan_id}.png").unlink(missing_ok=True)
     (options.out_dir / "ATTRIBUTION.txt").write_text(ATTRIBUTION, encoding="utf-8")
     jobs = [(plan, split, options) for plan, split in chosen]
     counts = dict.fromkeys(splits, 0)

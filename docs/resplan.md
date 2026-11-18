@@ -145,4 +145,4 @@ Because we pin a release, we do not get that removal automatically.
 The fetch script therefore checks the upstream `main` branch for `REMOVED.md` and saves it next to the data when it exists.
 To honor it, write the removed ids to a file (one per line, `#` starts a comment) and run the builder with `--exclude-ids <file>`.
 Plans listed there are skipped, and their images are not written.
-To drop them from anything built earlier, rebuild.
+To drop them from anything built earlier, rebuild into the same output folder: the builder deletes their images there.

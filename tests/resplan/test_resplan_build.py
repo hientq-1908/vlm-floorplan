@@ -11,7 +11,7 @@ from PIL import Image
 from shapely.geometry import box
 
 from vlm_floorplan.record import PlanRecord
-from vlm_floorplan.resplan.build import ATTRIBUTION, BuildOptions, build
+from vlm_floorplan.resplan.build import BuildOptions, build
 
 PlanMaker = Callable[[int], dict[str, Any]]
 
@@ -62,9 +62,11 @@ def test_the_augmented_split_is_opt_in(data_dir: Path, tmp_path: Path) -> None:
 
 
 def test_excluded_ids_are_skipped_for_takedowns(data_dir: Path, tmp_path: Path) -> None:
+    out = tmp_path / "out"
+    build(data_dir, BuildOptions(out_dir=out))
+    assert (out / "images" / "2.png").exists()
     exclude = tmp_path / "exclude.txt"
     exclude.write_text("2\n")
-    out = tmp_path / "out"
     build(data_dir, BuildOptions(out_dir=out), exclude_ids=exclude)
     assert [record.id for record in _records(out / "train.jsonl")] == ["resplan/1"]
     assert not (out / "images" / "2.png").exists()
@@ -73,12 +75,18 @@ def test_excluded_ids_are_skipped_for_takedowns(data_dir: Path, tmp_path: Path) 
 def test_a_plan_without_rooms_is_skipped_not_fatal(
     data_dir: Path, tmp_path: Path, make_plan: PlanMaker, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    out = tmp_path / "out"
+    (data_dir / "ResPlan.pkl").write_bytes(pickle.dumps([make_plan(1), make_plan(4)]))
+    (data_dir / "split.json").write_text(json.dumps({"train": [1, 4]}))
+    build(data_dir, BuildOptions(out_dir=out), splits=("train",))
+    assert (out / "images" / "4.png").exists()
+
     empty = {"id": 4, "inner": box(0, 0, 10, 10), "wall": box(0, 0, 10, 10)}
     (data_dir / "ResPlan.pkl").write_bytes(pickle.dumps([make_plan(1), empty]))
-    (data_dir / "split.json").write_text(json.dumps({"train": [1, 4]}))
-    counts = build(data_dir, BuildOptions(out_dir=tmp_path / "out"), splits=("train",))
+    counts = build(data_dir, BuildOptions(out_dir=out), splits=("train",))
     assert counts == {"train": 1}
     assert "plan 4 skipped" in capsys.readouterr().out
+    assert not (out / "images" / "4.png").exists()
 
 
 def test_limit_caps_the_number_of_plans(data_dir: Path, tmp_path: Path) -> None:
@@ -103,5 +111,7 @@ def test_labels_option_changes_the_image(data_dir: Path, tmp_path: Path) -> None
 def test_the_output_carries_the_cc_by_attribution(data_dir: Path, tmp_path: Path) -> None:
     out = tmp_path / "out"
     build(data_dir, BuildOptions(out_dir=out))
-    assert (out / "ATTRIBUTION.txt").read_text() == ATTRIBUTION
-    assert "CC BY 4.0" in ATTRIBUTION
+    attribution = (out / "ATTRIBUTION.txt").read_text()
+    assert "https://github.com/m-agour/ResPlan" in attribution
+    assert "https://creativecommons.org/licenses/by/4.0/" in attribution
+    assert "Changes:" in attribution

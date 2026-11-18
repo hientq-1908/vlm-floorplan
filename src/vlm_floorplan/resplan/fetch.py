@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import http.client
+import os
 import shutil
 import time
 import urllib.error
@@ -51,7 +53,7 @@ def _download(url: str, target: Path) -> None:
             ):
                 shutil.copyfileobj(response, out, CHUNK_BYTES)
             return
-        except (urllib.error.URLError, TimeoutError) as err:
+        except (OSError, http.client.HTTPException) as err:
             if isinstance(err, urllib.error.HTTPError) and err.code < 500:
                 raise
             if attempt == MAX_ATTEMPTS:
@@ -70,12 +72,14 @@ def sha256_of(path: Path) -> str:
 def extract_pickle(zip_path: Path, dest: Path) -> Path:
     """Copy `ResPlan.pkl` out of the zip. Only that one member is read, never its other paths."""
     target = dest / PICKLE_NAME
+    partial = dest / f"{PICKLE_NAME}.partial"
     with (
         zipfile.ZipFile(zip_path) as archive,
         archive.open(PICKLE_NAME) as member,
-        target.open("wb") as out,
+        partial.open("wb") as out,
     ):
         shutil.copyfileobj(member, out, CHUNK_BYTES)
+    os.replace(partial, target)
     return target
 
 
