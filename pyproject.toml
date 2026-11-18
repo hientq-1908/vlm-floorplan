@@ -1,12 +1,28 @@
 [project]
 name = "vlm-floorplan"
-version = "0.0.1"
-description = "VLM floorplan assistant: image to graph, chat edits, graph output"
+version = "0.1.0"
+description = "VLM floorplan assistant: floorplan image to room graph, chat edits, graph output"
+readme = "README.md"
 requires-python = ">=3.11,<3.13"
-dependencies = []
+dependencies = [
+    "numpy>=2.4.6",
+    "pillow>=13.0.0",
+    "pydantic>=2.14.3",
+    "shapely>=2.2.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.16,<0.12"]
+build-backend = "uv_build"
 
 [dependency-groups]
-spike = [
+dev = [
+    "pytest>=9.2.0",
+    "ruff>=0.17.5",
+]
+# Heavy ML stack (torch, transformers, TRL). Not needed for the schema,
+# converters or viewer; install with `uv sync --group ml`.
+ml = [
     "accelerate==1.16.0",
     "clearml==2.2.0",
     "datasets>=4.7.0",
@@ -20,4 +36,20 @@ spike = [
 ]
 
 [tool.uv]
-default-groups = ["spike"]
+default-groups = ["dev"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "network: needs internet access (dataset servers)",
+    "hf: needs the ML group and the Qwen3.5-4B processor files (downloaded once from the Hugging Face Hub, then cached)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "N"]
+
