@@ -140,6 +140,7 @@ def test_resume_retries_failed_plans_and_scores_only_the_retry(split: Path, tmp_
     retry = FakeClient([reply(to_compact(gt_record().graph))])
     records = collect_outputs(config, retry, run_dir)
     assert len(retry.requests) == 1
+    assert len((run_dir / "inputs.jsonl").read_text().splitlines()) == 1
     summary = score_run(run_dir, records)
     assert summary["n_plans"] == 1
     assert summary["overall"]["validity_rate"] == 1.0

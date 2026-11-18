@@ -23,6 +23,9 @@ DROP_BEFORE_REPLY = -1
 DROP_MID_BODY = -2
 """Promise a longer body than is sent, then close: the reply is cut off mid-read."""
 
+DROP_MID_ERROR_BODY = -3
+"""Answer 503, then close partway through the error body."""
+
 
 class Handler(BaseHTTPRequestHandler):
     statuses: list[int] = []
@@ -41,8 +44,8 @@ class Handler(BaseHTTPRequestHandler):
         if status == DROP_BEFORE_REPLY:
             self.close_connection = True
             return
-        if status == DROP_MID_BODY:
-            self.send_response(200)
+        if status in (DROP_MID_BODY, DROP_MID_ERROR_BODY):
+            self.send_response(200 if status == DROP_MID_BODY else 503)
             self.send_header("Content-Length", "1000")
             self.end_headers()
             self.wfile.write(b'{"choices": ')
@@ -85,7 +88,7 @@ def test_transient_server_errors_are_retried(base_url: str) -> None:
     assert len(Handler.seen) == 3
 
 
-@pytest.mark.parametrize("drop", [DROP_BEFORE_REPLY, DROP_MID_BODY])
+@pytest.mark.parametrize("drop", [DROP_BEFORE_REPLY, DROP_MID_BODY, DROP_MID_ERROR_BODY])
 def test_dropped_connections_are_retried(base_url: str, drop: int) -> None:
     Handler.statuses = [drop]
     assert HttpChatClient(base_url).complete({}).content == "hi"

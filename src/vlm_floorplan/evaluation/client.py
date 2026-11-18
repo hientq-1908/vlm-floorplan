@@ -61,6 +61,14 @@ def parse_chat_response(body: dict[str, Any], latency_s: float) -> ChatResponse:
     )
 
 
+def _error_body(err: urllib.error.HTTPError) -> bytes:
+    """The start of an error reply's body, or nothing if the connection drops while reading it."""
+    try:
+        return err.read()[:300]
+    except (OSError, http.client.HTTPException):
+        return b""
+
+
 class HttpChatClient:
     def __init__(self, base_url: str, api_key_env: str | None = None, timeout_s: float = 600.0):
         self.url = base_url.rstrip("/") + "/chat/completions"
@@ -89,7 +97,7 @@ class HttpChatClient:
                     body = json.loads(reply.read())
                 return parse_chat_response(body, time.monotonic() - started)
             except urllib.error.HTTPError as err:
-                last_error = ApiError(f"HTTP {err.code}: {err.read()[:300]!r}")
+                last_error = ApiError(f"HTTP {err.code}: {_error_body(err)!r}")
                 if err.code not in RETRY_STATUS:
                     break
             # urllib wraps only errors raised while sending; a dropped connection while

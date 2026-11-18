@@ -148,6 +148,7 @@ def collect_outputs(config: EvalConfig, client: ChatClient, run_dir: Path) -> li
         if not any(key in row for key in FAILURE_KEYS)
     }
     todo = [record for record in records if record.id not in done]
+    has_input_row = {row["plan_id"] for row in read_jsonl(run_dir / "inputs.jsonl")}
 
     def work(record: PlanRecord) -> tuple[dict[str, Any] | None, dict[str, Any]]:
         try:
@@ -160,7 +161,7 @@ def collect_outputs(config: EvalConfig, client: ChatClient, run_dir: Path) -> li
     # concurrent requests, so concurrency is what keeps the GPU busy.
     with ThreadPoolExecutor(max_workers=config.concurrency) as pool:
         for input_row, output_row in pool.map(work, todo):
-            if input_row is not None:
+            if input_row is not None and input_row["plan_id"] not in has_input_row:
                 append_jsonl(run_dir / "inputs.jsonl", input_row)
             append_jsonl(run_dir / "outputs.jsonl", output_row)
     return records
