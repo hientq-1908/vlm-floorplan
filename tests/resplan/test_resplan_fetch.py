@@ -125,3 +125,31 @@ def test_download_does_not_retry_a_local_write_failure(
     with pytest.raises(FileNotFoundError):
         fetch._download("https://example.invalid/file", tmp_path / "missing" / "file")
     assert len(attempts) == 1
+
+
+def test_a_failed_recheck_keeps_the_saved_removed_list(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    dest = tmp_path / "data"
+    dest.mkdir()
+    (dest / fetch.PICKLE_NAME).write_bytes(b"existing")
+    (dest / "REMOVED.md").write_text("123\n")
+
+    def rate_limited(url: str, target: Path) -> None:
+        target.write_bytes(b"partial")
+        raise urllib.error.HTTPError(url, 429, "Too Many Requests", None, None)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(fetch, "_download", rate_limited)
+    fetch.fetch_resplan(dest)
+    assert (dest / "REMOVED.md").read_text() == "123\n"
+    assert not (dest / "REMOVED.md.partial").exists()
+    assert "warning" in capsys.readouterr().out
+
+
+def test_a_404_recheck_removes_a_stale_removed_list(tmp_path: Path, offline: list[str]) -> None:
+    dest = tmp_path / "data"
+    dest.mkdir()
+    (dest / fetch.PICKLE_NAME).write_bytes(b"existing")
+    (dest / "REMOVED.md").write_text("123\n")
+    fetch.fetch_resplan(dest)
+    assert not (dest / "REMOVED.md").exists()

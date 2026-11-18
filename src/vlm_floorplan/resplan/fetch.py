@@ -91,14 +91,18 @@ def extract_pickle(zip_path: Path, dest: Path) -> Path:
 def _note_removed_plans(dest: Path) -> None:
     """Fetch upstream's current removal list, if it has one, so takedowns can be honored."""
     target = dest / "REMOVED.md"
+    partial = dest / "REMOVED.md.partial"
     try:
-        _download(REMOVED_URL, target)
+        _download(REMOVED_URL, partial)
+        os.replace(partial, target)
     except urllib.error.HTTPError as err:
-        target.unlink(missing_ok=True)
         if err.code != 404:
             raise
+        target.unlink(missing_ok=True)
         print("upstream lists no removed plans (REMOVED.md not found)")
         return
+    finally:
+        partial.unlink(missing_ok=True)
     print(
         f"upstream lists removed plans: see {target}.\n"
         "Put their ids in a file (one per line) and pass it to the builder with --exclude-ids."
@@ -111,7 +115,12 @@ def fetch_resplan(dest: Path = DEFAULT_DEST, force: bool = False) -> Path:
     pickle_path = dest / PICKLE_NAME
     if pickle_path.exists() and not force:
         print(f"{pickle_path} already exists (use --force to download again)")
-        _note_removed_plans(dest)
+        try:
+            _note_removed_plans(dest)
+        except (urllib.error.URLError, RuntimeError) as err:
+            print(
+                f"warning: could not recheck upstream's removed plans ({err}); kept the local copy"
+            )
         return pickle_path
 
     for name in SMALL_FILES:
