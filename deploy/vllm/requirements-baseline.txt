@@ -1,0 +1,8 @@
+# Packages the ClearML agent installs for the zero-shot baseline job (T5 / M2).
+# vLLM brings its own torch, so this environment is separate from the project's `ml` group.
+vllm==0.33.0
+clearml==2.2.0
+pydantic>=2.14.3
+shapely>=2.2.0
+numpy>=2.4.6
+pillow>=13.0.0
