@@ -124,7 +124,7 @@ def test_move_room_drops_the_box() -> None:
     moved = room(result.graph, "r1")
     assert moved.xy == (1000, 1000)
     assert moved.bbox is None
-    assert result.description == "moved r1 from (400, 500) to (1000,1000) and dropped its bbox"
+    assert result.description == "moved r1 from (400, 500) to (1000, 1000) and dropped its bbox"
 
 
 def test_move_room_to_the_same_place_is_no_change() -> None:

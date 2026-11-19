@@ -41,7 +41,7 @@ def test_applied_edit_text_has_description_warnings_and_totals() -> None:
     outcome = apply_op(sample_graph(), AddRoom(type="storage", x=10, y=20, floor=1, label="Closet"))
     assert format_edit_outcome(outcome) == "\n".join(
         [
-            "OK: added storage room r7 'Closet' at (10,20) on floor 1.",
+            "OK: added storage room r7 'Closet' at (10, 20) on floor 1.",
             "Warning: room r7 has no links to other rooms on floor 1.",
             "The plan now has 8 rooms and 5 links (2 door, 1 opening, 2 wall).",
         ]

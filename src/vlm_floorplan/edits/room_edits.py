@@ -69,7 +69,7 @@ def add_room(graph: FloorplanGraph, op: AddRoom) -> Change | EditError:
     applied = op.model_copy(update={"room_id": room_id, "floor": floor.floor})
     name = f" '{room.label}'" if room.label else ""
     description = (
-        f"added {room.type.value} room {room_id}{name} at ({op.x},{op.y}) on floor {floor.floor}"
+        f"added {room.type.value} room {room_id}{name} at ({op.x}, {op.y}) on floor {floor.floor}"
     )
     return Change(replace_floor(graph, floor_index, new_floor), applied, description)
 
@@ -80,9 +80,9 @@ def move_room(graph: FloorplanGraph, op: MoveRoom) -> Change | EditError:
         return unknown_room_error(graph, op.room_id)
     floor_index, room = found
     if room.xy == (op.x, op.y):
-        return no_change(f"Room {room.id} is already at ({op.x},{op.y}).", room.id)
+        return no_change(f"Room {room.id} is already at ({op.x}, {op.y}).", room.id)
     new_graph = swap_room(graph, floor_index, rebuilt_room(room, xy=(op.x, op.y), bbox=None))
-    description = f"moved {room.id} from {room.xy} to ({op.x},{op.y})"
+    description = f"moved {room.id} from ({room.xy[0]}, {room.xy[1]}) to ({op.x}, {op.y})"
     if room.bbox is not None:
         description += " and dropped its bbox"
     return Change(new_graph, op, description)
