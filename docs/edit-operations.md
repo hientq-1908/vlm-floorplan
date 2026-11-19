@@ -21,18 +21,25 @@ That makes undo cheap (keep the old graph) and makes replays trivially safe.
 
 | Op | Arguments | Notes |
 |----|-----------|-------|
-| `add_room` | `type`, `x`, `y`, optional `label`, `floor`, `entrance`, box `x1 y1 x2 y2` | The id is assigned (next free number). The new room has no links. |
-| `move_room` | `room_id`, `x`, `y` | The room's box, if it has one, moves with it so the point stays inside. |
+| `add_room` | `type`, `x`, `y`, optional `label`, `floor`, `entrance` | The id is assigned (next free number). The new room has no links and no bbox. |
+| `move_room` | `room_id`, `x`, `y` | Changes only the point, and drops the room's bbox if it had one. |
 | `delete_room` | `room_id` | Drops every link that touches the room. |
 | `set_room_type` | `room_id`, `type` | |
 | `set_room_label` | `room_id`, `label` | An empty label removes the name. |
-| `add_link` | `room_a`, `room_b`, `kind` | See "Doors only go into shared walls". |
+| `add_link` | `room_a`, `room_b`, `kind` | Only `wall` between unlinked rooms. See "Doors only go into shared walls". |
 | `remove_link` | `room_a`, `room_b` | Removes adjacency entirely. To close a door, use `set_link_kind` with `wall`. |
-| `set_link_kind` | `room_a`, `room_b`, `kind` | The pair must already be linked. |
+| `set_link_kind` | `room_a`, `room_b`, `kind` | The pair must already be linked. The only way to change a link's kind. |
 | `set_entrance` | `room_id`, `entrance` | |
 
 Walls and geometry are never edited.
 `move_room` moves a graph node, not a wall.
+
+## Edits ignore the bbox
+
+The per-room bbox is being retired from the schema, so edits do not maintain it.
+`add_room` takes no box, the validator does not check boxes, and `move_room` drops the moved room's bbox.
+Keeping a box in sync with a dragged point would mean clamping or shifting it at the grid edge, which silently changes the box.
+A room is placed by its point alone.
 
 ## Flat scalar arguments
 
@@ -54,11 +61,14 @@ The id that was assigned is written back into the op (`EditApplied.op`), so repl
 The model never sees walls after perception.
 The graph remembers adjacency as a `wall` link, so that is the evidence the validator uses.
 
-- `add_link` with kind `door` or `opening` is allowed only where the pair is already linked by a `wall` (the door goes into that wall).
-- Between rooms with no link at all it is refused with `not_adjacent`, and the message says what to do if they do touch.
+- `add_link` only creates a link between two rooms that are not linked yet.
 - `add_link` with kind `wall` declares adjacency between two unlinked rooms.
   This is needed to connect a newly added room.
-- Any other `add_link` on an already linked pair is a `duplicate_link`, and the message points to `set_link_kind`.
+- `add_link` with kind `door` or `opening` between unlinked rooms is refused with `not_adjacent`.
+  The message says that the rooms are not linked, and that if they do touch, a `wall` link comes first and `set_link_kind` then turns it into a door or opening.
+- Any `add_link` on an already linked pair is a `duplicate_link`, and the message points to `set_link_kind`.
+- `set_link_kind` is the only way to change a link's kind.
+  One tool per change means synthetic data and RL never produce two spellings of the same edit.
 
 An honest limit: a model can still say "wall, then door" to two far-apart rooms.
 Checking real adjacency would need room polygons, which the graph does not keep, and drag edits move nodes around freely.
@@ -68,7 +78,7 @@ So the check is a guard against the common mistake (a door out of nowhere), not 
 
 `validate_graph(graph)` returns every finding as an `Issue` with a severity, a code, a sentence naming the rooms, and the room ids.
 
-- Errors: duplicate floors or room ids, malformed ids, coordinates outside the 0-1000 grid, bad boxes, self links, links to rooms that do not exist or are on another floor, duplicate links.
+- Errors: duplicate floors or room ids, malformed ids, coordinates outside the 0-1000 grid, self links, links to rooms that do not exist or are on another floor, duplicate links.
 - Warnings: no room is marked as the entrance, and a room with no links on a floor that has other rooms.
 
 The schema's pydantic validators already refuse most of these, so a graph built normally is valid.
@@ -92,10 +102,10 @@ A history full of no-ops would teach a model that they are fine, and the message
 `format_edit_outcome` produces the tool response:
 
 ```text
-OK: put a door into the wall between r1 and r3.
+OK: changed the link between r1 and r3 from wall to door.
 The plan now has 7 rooms and 5 links (3 door, 1 opening, 1 wall).
 
-REJECTED (not_adjacent): Cannot add a door between r0 and r4: they share no wall or opening, ...
+REJECTED (not_adjacent): Cannot add a door between r0 and r4: they are not linked. ...
 The plan was not changed.
 ```
 

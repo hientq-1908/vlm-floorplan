@@ -37,7 +37,6 @@ class IssueCode(StrEnum):
     DUPLICATE_ROOM_ID = "duplicate_room_id"
     BAD_ROOM_ID = "bad_room_id"
     COORD_OUT_OF_RANGE = "coord_out_of_range"
-    BAD_BBOX = "bad_bbox"
     SELF_LINK = "self_link"
     DANGLING_LINK = "dangling_link"  # an end is not a room on this floor
     CROSS_FLOOR_LINK = "cross_floor_link"  # an end is a room on another floor
@@ -100,40 +99,7 @@ def _check_room(room: Room) -> list[Issue]:
                     room.id,
                 )
             )
-    if room.bbox is not None:
-        issues.extend(_check_bbox(room))
     return issues
-
-
-def _check_bbox(room: Room) -> list[Issue]:
-    assert room.bbox is not None
-    x1, y1, x2, y2 = room.bbox
-    if any(not 0 <= c <= GRID_MAX for c in room.bbox):
-        return [
-            _error(
-                IssueCode.COORD_OUT_OF_RANGE,
-                f"room {room.id} has box {room.bbox}, outside the 0-{GRID_MAX} grid",
-                room.id,
-            )
-        ]
-    if x1 > x2 or y1 > y2:
-        return [
-            _error(
-                IssueCode.BAD_BBOX,
-                f"room {room.id} has box {room.bbox} with x1>x2 or y1>y2",
-                room.id,
-            )
-        ]
-    x, y = room.xy
-    if not (x1 <= x <= x2 and y1 <= y <= y2):
-        return [
-            _error(
-                IssueCode.BAD_BBOX,
-                f"room {room.id} has its point {room.xy} outside its box {room.bbox}",
-                room.id,
-            )
-        ]
-    return []
 
 
 def _check_floor(floor: Floor, floor_of: dict[str, int]) -> list[Issue]:

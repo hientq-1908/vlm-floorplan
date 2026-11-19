@@ -107,12 +107,7 @@ def test_unknown_tool_lists_the_valid_ones() -> None:
         ("move_room", {"room_id": "r1", "x": 5, "y": 5, "z": 1}, "unknown argument 'z'"),
         ("add_link", {"room_a": "r1", "room_b": "r2", "kind": "window"}, "argument 'kind'"),
         ("set_entrance", {"room_id": "r1", "entrance": "maybe"}, "argument 'entrance'"),
-        ("add_room", {"type": "kitchen", "x": 5, "y": 5, "x1": 1}, "all four of x1, y1, x2, y2"),
-        (
-            "add_room",
-            {"type": "kitchen", "x": 50, "y": 5, "x1": 0, "y1": 0, "x2": 10, "y2": 10},
-            "inside its box",
-        ),
+        ("add_room", {"type": "kitchen", "x": 5, "y": 5, "x1": 1}, "unknown argument 'x1'"),
     ],
 )
 def test_bad_arguments_become_a_readable_error(name: str, arguments: dict, fragment: str) -> None:

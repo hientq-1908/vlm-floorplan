@@ -15,7 +15,7 @@ from vlm_floorplan.edits import (
     SetRoomType,
     validate_graph,
 )
-from vlm_floorplan.schema import RoomType
+from vlm_floorplan.schema import Floor, FloorplanGraph, Room, RoomType
 
 from .helpers import applied, link_kinds, rejected, sample_graph
 
@@ -74,10 +74,10 @@ def test_add_room_with_an_id_in_use_is_rejected() -> None:
     assert rejected(sample_graph(), op).error.code == EditErrorCode.ID_IN_USE
 
 
-def test_add_room_keeps_the_box_and_entrance() -> None:
-    op = AddRoom(type="entry", x=50, y=50, floor=1, entrance=True, x1=0, y1=0, x2=100, y2=100)
+def test_add_room_keeps_the_entrance_and_has_no_box() -> None:
+    op = AddRoom(type="entry", x=50, y=50, floor=1, entrance=True)
     new = room(applied(sample_graph(), op).graph, "r7")
-    assert new.bbox == (0, 0, 100, 100)
+    assert new.bbox is None
     assert new.entrance
 
 
@@ -108,17 +108,20 @@ def test_move_room_changes_only_the_point() -> None:
     assert result.graph.floors[0].links == graph.floors[0].links
 
 
-def test_move_room_carries_the_box_along() -> None:
-    moved = room(applied(sample_graph(), MoveRoom(room_id="r1", x=450, y=520)).graph, "r1")
-    assert moved.bbox == (350, 420, 550, 620)
-
-
-def test_move_room_clamps_the_box_to_the_grid() -> None:
-    moved = room(applied(sample_graph(), MoveRoom(room_id="r1", x=1000, y=1000)).graph, "r1")
-    assert moved.bbox == (900, 900, 1000, 1000)
-    assert not validate_graph(
-        applied(sample_graph(), MoveRoom(room_id="r1", x=1000, y=1000)).graph
-    ).errors
+def test_move_room_drops_the_box() -> None:
+    base = sample_graph()
+    floor1 = base.floors[0]
+    rooms = [
+        Room(id="r1", type=RoomType.LIVING, xy=(400, 500), bbox=(300, 400, 500, 600))
+        if r.id == "r1"
+        else r
+        for r in floor1.rooms
+    ]
+    boxed_floor = Floor(floor=floor1.floor, rooms=rooms, links=floor1.links)
+    graph = FloorplanGraph(floors=[boxed_floor, *base.floors[1:]], image=base.image)
+    moved = room(applied(graph, MoveRoom(room_id="r1", x=1000, y=1000)).graph, "r1")
+    assert moved.xy == (1000, 1000)
+    assert moved.bbox is None
 
 
 def test_move_room_to_the_same_place_is_no_change() -> None:
@@ -208,23 +211,13 @@ def test_set_entrance_to_the_current_value_is_no_change() -> None:
 # --- add_link ---------------------------------------------------------------------------
 
 
-def test_add_door_into_a_shared_wall_replaces_the_wall_link() -> None:
-    result = applied(sample_graph(), AddLink(room_a="r3", room_b="r1", kind="door"))
-    assert link_kinds(result.graph)[pair("r1", "r3")] == "door"
-    assert len(result.graph.floors[0].links) == 4  # replaced, not added
-
-
-def test_add_opening_into_a_shared_wall() -> None:
-    result = applied(sample_graph(), AddLink(room_a="r3", room_b="r4", kind="opening"))
-    assert link_kinds(result.graph)[pair("r3", "r4")] == "opening"
-
-
 def test_add_door_between_non_adjacent_rooms_is_rejected_with_a_reason() -> None:
     error = rejected(sample_graph(), AddLink(room_a="r0", room_b="r4", kind="door")).error
     assert error.code == EditErrorCode.NOT_ADJACENT
     assert error.room_ids == ("r0", "r4")
-    assert "share no wall or opening" in error.message
+    assert "not linked" in error.message
     assert "'wall'" in error.message
+    assert "set_link_kind" in error.message
 
 
 def test_add_opening_between_non_adjacent_rooms_is_rejected() -> None:
@@ -233,15 +226,20 @@ def test_add_opening_between_non_adjacent_rooms_is_rejected() -> None:
     ).error.code == (EditErrorCode.NOT_ADJACENT)
 
 
-def test_add_wall_link_declares_adjacency_and_then_a_door_is_allowed() -> None:
+def test_add_wall_link_declares_adjacency_and_set_link_kind_then_adds_a_door() -> None:
     with_wall = applied(sample_graph(), AddLink(room_a="r2", room_b="r4", kind="wall")).graph
-    with_door = applied(with_wall, AddLink(room_a="r2", room_b="r4", kind="door")).graph
+    assert link_kinds(with_wall)[pair("r2", "r4")] == "wall"
+    with_door = applied(with_wall, SetLinkKind(room_a="r2", room_b="r4", kind="door")).graph
     assert link_kinds(with_door)[pair("r2", "r4")] == "door"
 
 
+@pytest.mark.parametrize("pair_ids", [("r1", "r0"), ("r1", "r2"), ("r3", "r1")])
 @pytest.mark.parametrize("kind", ["door", "wall", "opening"])
-def test_add_link_on_a_pair_that_is_already_a_door_is_a_duplicate(kind: str) -> None:
-    error = rejected(sample_graph(), AddLink(room_a="r1", room_b="r0", kind=kind)).error
+def test_add_link_on_an_already_linked_pair_is_a_duplicate(
+    pair_ids: tuple[str, str], kind: str
+) -> None:
+    room_a, room_b = pair_ids
+    error = rejected(sample_graph(), AddLink(room_a=room_a, room_b=room_b, kind=kind)).error
     assert error.code == EditErrorCode.DUPLICATE_LINK
     assert "set_link_kind" in error.message
 
@@ -304,7 +302,6 @@ def test_a_handler_bug_is_caught_by_the_validator_and_refused(monkeypatch) -> No
     """The safety net: if a handler ever builds a broken graph, the edit is refused."""
     from vlm_floorplan.edits import apply as apply_module
     from vlm_floorplan.edits.change import Change
-    from vlm_floorplan.schema import FloorplanGraph, Room
 
     graph = sample_graph()
 

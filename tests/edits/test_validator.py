@@ -77,18 +77,6 @@ def test_coordinates_out_of_range() -> None:
     assert "y=-1" in issues[1].message
 
 
-def test_bbox_outside_the_grid_and_inverted_and_missing_the_point() -> None:
-    def with_box(box):
-        made = Room.model_construct(
-            id="r0", type=RoomType.LIVING, xy=(50, 50), bbox=box, entrance=False
-        )
-        return validate_graph(raw_graph([raw_floor(1, [made])])).errors
-
-    assert [i.code for i in with_box((0, 0, 2000, 100))] == [IssueCode.COORD_OUT_OF_RANGE]
-    assert [i.code for i in with_box((60, 0, 40, 100))] == [IssueCode.BAD_BBOX]
-    assert [i.code for i in with_box((0, 0, 10, 10))] == [IssueCode.BAD_BBOX]
-
-
 def test_malformed_room_id() -> None:
     bad = Room.model_construct(
         id="kitchen", type=RoomType.LIVING, xy=(1, 1), bbox=None, entrance=False

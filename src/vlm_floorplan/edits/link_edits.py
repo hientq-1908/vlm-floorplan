@@ -1,7 +1,9 @@
 """Handlers for the edits that change a link: add, remove, set kind.
 
 The rule that matters most here: a door or an opening can only go where two rooms
-already touch, which the graph records as an existing `wall` (or `opening`) link.
+already touch, which the graph records as an existing link.
+`add_link` only declares adjacency with a `wall` link between unlinked rooms, and
+`set_link_kind` is the one way to turn that wall into a door or an opening.
 The model never sees walls after perception, so this is the check that stops
 "add a door between the garage and the bathroom" when they are far apart.
 """
@@ -53,31 +55,26 @@ def add_link(graph: FloorplanGraph, op: AddLink) -> Change | EditError:
     index, a, b = resolved
     floor = graph.floors[index]
     existing = find_link(floor, a.id, b.id)
-    new_link = Link(a=a.id, b=b.id, kind=op.kind)
-    if existing is None:
-        if op.kind != LinkKind.WALL:
-            return make_error(
-                EditErrorCode.NOT_ADJACENT,
-                f"Cannot add a {op.kind.value} between {a.id} and {b.id}: they share no wall or"
-                f" opening, so there is nowhere to put it. If they do touch, first add a link"
-                f" of kind 'wall' between them.",
-                a.id,
-                b.id,
-            )
-        description = f"linked {a.id} and {b.id} with a wall"
-        return Change(_with_links(graph, index, [*floor.links, new_link]), op, description)
-    position, old = existing
-    if old.kind == LinkKind.WALL and op.kind != LinkKind.WALL:
-        links = [*floor.links[:position], new_link, *floor.links[position + 1 :]]
-        description = f"put a {op.kind.value} into the wall between {a.id} and {b.id}"
-        return Change(_with_links(graph, index, links), op, description)
-    return make_error(
-        EditErrorCode.DUPLICATE_LINK,
-        f"{a.id} and {b.id} are already linked by a {old.kind.value}."
-        " To change how they connect, use set_link_kind.",
-        a.id,
-        b.id,
-    )
+    if existing is not None:
+        return make_error(
+            EditErrorCode.DUPLICATE_LINK,
+            f"{a.id} and {b.id} are already linked by a {existing[1].kind.value}."
+            " To change how they connect, use set_link_kind.",
+            a.id,
+            b.id,
+        )
+    if op.kind != LinkKind.WALL:
+        return make_error(
+            EditErrorCode.NOT_ADJACENT,
+            f"Cannot add a {op.kind.value} between {a.id} and {b.id}: they are not linked."
+            " If they do touch, first add a link of kind 'wall' between them, then change"
+            f" it to a {op.kind.value} with set_link_kind.",
+            a.id,
+            b.id,
+        )
+    new_link = Link(a=a.id, b=b.id, kind=LinkKind.WALL)
+    description = f"linked {a.id} and {b.id} with a wall"
+    return Change(_with_links(graph, index, [*floor.links, new_link]), op, description)
 
 
 def remove_link(graph: FloorplanGraph, op: RemoveLink) -> Change | EditError:

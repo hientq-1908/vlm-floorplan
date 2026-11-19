@@ -16,9 +16,7 @@ def sample_graph() -> FloorplanGraph:
         floor=1,
         rooms=[
             Room(id="r0", type=RoomType.ENTRY, xy=(100, 500), entrance=True),
-            Room(
-                id="r1", type=RoomType.LIVING, label="OH", xy=(400, 500), bbox=(300, 400, 500, 600)
-            ),
+            Room(id="r1", type=RoomType.LIVING, label="OH", xy=(400, 500)),
             Room(id="r2", type=RoomType.KITCHEN, xy=(700, 500)),
             Room(id="r3", type=RoomType.BEDROOM, xy=(400, 800)),
             Room(id="r4", type=RoomType.BATHROOM, xy=(700, 800)),

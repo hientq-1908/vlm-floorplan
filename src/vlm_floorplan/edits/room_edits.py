@@ -6,8 +6,6 @@ Handlers check the rules that need the graph; `apply_op` validates the result af
 
 from __future__ import annotations
 
-from typing import Any
-
 from vlm_floorplan.edits.change import Change, make_error, no_change
 from vlm_floorplan.edits.lookup import (
     locate_room,
@@ -25,11 +23,7 @@ from vlm_floorplan.edits.ops import (
     SetRoomType,
 )
 from vlm_floorplan.edits.outcome import EditError, EditErrorCode
-from vlm_floorplan.schema import GRID_MAX, Floor, FloorplanGraph, Room
-
-
-def _clamp(value: int) -> int:
-    return max(0, min(GRID_MAX, value))
+from vlm_floorplan.schema import Floor, FloorplanGraph, Room
 
 
 def swap_room(graph: FloorplanGraph, floor_index: int, new_room: Room) -> FloorplanGraph:
@@ -69,7 +63,6 @@ def add_room(graph: FloorplanGraph, op: AddRoom) -> Change | EditError:
         type=op.type,
         label=op.label,
         xy=(op.x, op.y),
-        bbox=op.bbox,
         entrance=op.entrance,
     )
     new_floor = Floor(floor=floor.floor, rooms=[*floor.rooms, room], links=floor.links)
@@ -88,13 +81,7 @@ def move_room(graph: FloorplanGraph, op: MoveRoom) -> Change | EditError:
     floor_index, room = found
     if room.xy == (op.x, op.y):
         return no_change(f"Room {room.id} is already at ({op.x},{op.y}).", room.id)
-    changes: dict[str, Any] = {"xy": (op.x, op.y)}
-    if room.bbox is not None:
-        # The box travels with the point so that the point stays inside it.
-        dx, dy = op.x - room.xy[0], op.y - room.xy[1]
-        x1, y1, x2, y2 = room.bbox
-        changes["bbox"] = (_clamp(x1 + dx), _clamp(y1 + dy), _clamp(x2 + dx), _clamp(y2 + dy))
-    new_graph = swap_room(graph, floor_index, rebuilt_room(room, **changes))
+    new_graph = swap_room(graph, floor_index, rebuilt_room(room, xy=(op.x, op.y), bbox=None))
     return Change(new_graph, op, f"moved {room.id} from {room.xy} to ({op.x},{op.y})")
 
 

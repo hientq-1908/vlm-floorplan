@@ -42,11 +42,6 @@ def test_blank_label_means_no_label_and_long_labels_are_rejected() -> None:
         AddRoom(type="living", x=1, y=1, label="x" * 41)
 
 
-def test_bbox_property() -> None:
-    assert AddRoom(type="living", x=5, y=5).bbox is None
-    assert AddRoom(type="living", x=5, y=5, x1=0, y1=1, x2=9, y2=9).bbox == (0, 1, 9, 9)
-
-
 def test_set_room_label_keeps_a_string_so_it_survives_json() -> None:
     op = SetRoomLabel(room_id="r1", label="   ")
     assert op.label == ""

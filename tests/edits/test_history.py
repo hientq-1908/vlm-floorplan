@@ -12,6 +12,7 @@ from vlm_floorplan.edits import (
     EditHistory,
     EditRejected,
     MoveRoom,
+    SetLinkKind,
     SetRoomType,
     dump_ops,
     load_ops,
@@ -91,7 +92,7 @@ def test_ops_survive_a_json_round_trip() -> None:
     history = EditHistory(sample_graph())
     history.apply(AddRoom(type="storage", x=5, y=5, floor=1, label="Pantry"))
     history.apply(AddLink(room_a="r7", room_b="r2", kind="wall"))
-    history.apply(AddLink(room_a="r7", room_b="r2", kind="door"))
+    history.apply(SetLinkKind(room_a="r7", room_b="r2", kind="door"))
     text = dump_ops(history.ops)
     assert "null" not in text
     assert load_ops(text) == list(history.ops)

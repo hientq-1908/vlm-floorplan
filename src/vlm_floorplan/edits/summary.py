@@ -9,7 +9,7 @@ Rejections lead with a fixed word (`REJECTED`) and the error code, so the model
     Warning: room r5 has no links to other rooms on floor 1.
     The plan now has 6 rooms and 7 links (3 door, 1 opening, 3 wall).
 
-    REJECTED (not_adjacent): Cannot add a door between r0 and r4: they share no wall or ...
+    REJECTED (not_adjacent): Cannot add a door between r0 and r4: they are not linked. ...
     The plan was not changed.
 """
 

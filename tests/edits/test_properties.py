@@ -138,15 +138,14 @@ def test_links_never_leave_a_floor_and_ids_stay_unique(seed: int) -> None:
 
 
 @pytest.mark.parametrize("seed", SEEDS)
-def test_a_door_or_opening_only_ever_appears_where_a_link_already_existed(seed: int) -> None:
+def test_add_link_only_ever_adds_a_wall_between_unlinked_rooms(seed: int) -> None:
     _, trace = run(seed)
     for before, outcome in trace:
         if not (isinstance(outcome, EditApplied) and isinstance(outcome.op, AddLink)):
             continue
-        if outcome.op.kind == LinkKind.WALL:
-            continue
         pair = frozenset((outcome.op.room_a, outcome.op.room_b))
-        assert any(link.pair == pair for floor in before.floors for link in floor.links)
+        assert outcome.op.kind == LinkKind.WALL
+        assert not any(link.pair == pair for floor in before.floors for link in floor.links)
 
 
 @pytest.mark.parametrize("seed", SEEDS[:10])

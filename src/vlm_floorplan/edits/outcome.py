@@ -37,7 +37,7 @@ class EditErrorCode(StrEnum):
     SELF_LINK = "self_link"
     UNKNOWN_LINK = "unknown_link"  # the two rooms are not linked at all
     DUPLICATE_LINK = "duplicate_link"
-    NOT_ADJACENT = "not_adjacent"  # a door or opening needs an existing wall or opening link
+    NOT_ADJACENT = "not_adjacent"  # a door or opening between rooms that are not linked
     NO_CHANGE = "no_change"  # the edit would leave the graph exactly as it is
     INVALID_RESULT = "invalid_result"  # safety net: the edit would break a graph rule
 

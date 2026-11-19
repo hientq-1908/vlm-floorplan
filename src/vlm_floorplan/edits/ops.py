@@ -15,15 +15,17 @@ Design notes:
   turns `{"op": "move_room", ...}` into the right class, and the tool name is the `op` value.
 - The docstrings and field descriptions are the text the model reads in its tool list,
   so they say what the op does and when to use it, not how it is implemented.
-- Ops are frozen. Op-local rules (a bbox must contain its point) are checked here;
+- Ops are frozen. Op-local rules (a coordinate is on the grid) are checked here;
   rules that need the graph (does the room exist?) are checked when the op is applied.
+- Ops never set or maintain a room's bbox: the bbox is being retired from the schema,
+  so a room is placed by its point alone.
 """
 
 from __future__ import annotations
 
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator
 
 from vlm_floorplan.schema import GridCoord, LinkKind, RoomId, RoomType
 
@@ -68,35 +70,12 @@ class AddRoom(_Op):
     entrance: bool = Field(
         default=False, description="True if an exterior door opens into this room."
     )
-    x1: GridCoord | None = Field(default=None, description="Optional box: left edge.")
-    y1: GridCoord | None = Field(default=None, description="Optional box: top edge.")
-    x2: GridCoord | None = Field(default=None, description="Optional box: right edge.")
-    y2: GridCoord | None = Field(default=None, description="Optional box: bottom edge.")
     room_id: RoomId | None = Field(
         default=None,
         description="Leave out: the next free id is assigned. Replays and tests set it.",
     )
 
     _label = field_validator("label")(_clean_label)
-
-    @model_validator(mode="after")
-    def _check_bbox(self) -> AddRoom:
-        corners = (self.x1, self.y1, self.x2, self.y2)
-        if all(c is None for c in corners):
-            return self
-        if any(c is None for c in corners):
-            raise ValueError("a box needs all four of x1, y1, x2, y2, or none of them")
-        if self.x1 > self.x2 or self.y1 > self.y2:  # type: ignore[operator]
-            raise ValueError("a box needs x1 <= x2 and y1 <= y2")
-        if not (self.x1 <= self.x <= self.x2 and self.y1 <= self.y <= self.y2):  # type: ignore[operator]
-            raise ValueError("the room's point (x, y) must lie inside its box")
-        return self
-
-    @property
-    def bbox(self) -> tuple[int, int, int, int] | None:
-        if self.x1 is None or self.y1 is None or self.x2 is None or self.y2 is None:
-            return None
-        return (self.x1, self.y1, self.x2, self.y2)
 
 
 class MoveRoom(_Op):
@@ -137,17 +116,19 @@ class SetRoomLabel(_Op):
 
 
 class AddLink(_Op):
-    """Connect two rooms on the same floor.
+    """Link two rooms on the same floor that are not linked yet.
 
-    Use kind 'door' or 'opening' only for rooms that already touch (they share a 'wall' or
-    'opening' link): this puts a door or an opening into that shared wall.
     Use kind 'wall' to say that two rooms are next to each other with a wall between them.
+    A door or opening needs that wall first: add a 'wall' link, then change it with
+    set_link_kind. Rooms that are already linked are changed only with set_link_kind.
     """
 
     op: Literal["add_link"] = "add_link"
     room_a: RoomId = Field(description="One of the two rooms.")
     room_b: RoomId = Field(description="The other room.")
-    kind: LinkKind = Field(description="door, opening (no wall between them), or wall.")
+    kind: LinkKind = Field(
+        description="Use 'wall'. For a door or opening, add a wall, then use set_link_kind."
+    )
 
 
 class RemoveLink(_Op):
