@@ -54,6 +54,8 @@ That is why `PlanRecord` keeps the room polygons even though the model only outp
 **`bbox` is optional.**
 It costs about 12 tokens per room and helps the grounding metric and the UI.
 The compact serializer writes it whenever a room has one.
+Amended 2026-11-19: the bbox is being retired, and rooms will become points only.
+Until the follow-up schema change lands, `bbox` stays optional in the schema, and edits do not maintain it (`docs/edit-operations.md`).
 
 **Links have three kinds: `door`, `opening` and `wall`.**
 `door` and `opening` are both needed because open-plan areas are common: a kitchen, dining area and living room are often separate polygons with no wall between them.
@@ -174,6 +176,8 @@ Thinking mode was chosen anyway, so the editing episodes need a short reasoning 
    Real images exist only in CubiCasa5K.
    The others are vectors, so their images are renders, which are augmentation and not a substitute for real plans.
 2. **Schema.** Keep wall links, an entrance flag, outdoor spaces as rooms, per-floor graphs, and a point plus an optional bbox per room.
+   Amended 2026-11-19: retire the bbox, so rooms become points only.
+   Until the follow-up schema change lands, `bbox` stays optional in the schema and edits do not maintain it.
 3. **Scope.** Retrieval is a later tool (M6) over a ResPlan pool.
    "Draw a new one" means composing a graph with the same edit tools, from an empty graph.
    Geometric generation is out of scope: it is a different research problem, and it contradicts the rule that geometry is not edited.
