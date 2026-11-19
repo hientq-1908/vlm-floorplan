@@ -26,7 +26,8 @@ SERVED_NAME="${SERVED_NAME:-qwen3.5-4b}"
 SERVE_HOST="${SERVE_HOST:-127.0.0.1}"
 SERVE_PORT="${SERVE_PORT:-8000}"
 # 20480 = a 1280 px plan image (about 1.2K tokens) + prompt + the 12K completion budget
-# that thinking mode needs. Raise it if the harness's --max-tokens goes up.
+# that thinking mode needs. Raise it if the harness's --max-tokens goes up; the ClearML
+# baseline job sets it from its --max-tokens.
 MAX_MODEL_LEN="${MAX_MODEL_LEN:-20480}"
 GPU_MEMORY_UTILIZATION="${GPU_MEMORY_UTILIZATION:-0.90}"
 

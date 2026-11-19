@@ -16,6 +16,7 @@ from vlm_floorplan.compact import to_compact
 from vlm_floorplan.evaluation.baseline_job import (
     bundle_results,
     run_baseline,
+    serve_env,
     spec_from_parameters,
 )
 from vlm_floorplan.evaluation.baseline_spec import (
@@ -161,3 +162,10 @@ def test_dry_run_prints_the_plan_and_never_imports_clearml(
     assert str(tmp_path / "dry") in out
     assert "clearml" not in sys.modules
     assert not (tmp_path / "dry").exists()
+
+
+@pytest.mark.parametrize(("max_tokens", "context"), [(12288, 20480), (20000, 28192)])
+def test_served_context_fits_the_completion_budget(max_tokens: int, context: int) -> None:
+    spec = BaselineSpec(run_name="t", max_tokens=max_tokens)
+    env = serve_env(spec, port=8000)
+    assert int(env["MAX_MODEL_LEN"]) == context

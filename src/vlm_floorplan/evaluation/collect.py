@@ -15,7 +15,7 @@ What "verified" means here:
 5. task details, scalars and the console log are saved.
 
 The ClearML calls live behind the `RemoteTask` protocol so this logic is tested with a
-fake. The real adapter is in `scripts/clearml_baseline.py`.
+fake. The real adapter is `ClearMlTask` in `launcher.py`.
 """
 
 from __future__ import annotations

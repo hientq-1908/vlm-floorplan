@@ -42,6 +42,9 @@ SERVER_START_TIMEOUT_S = 1800.0
 """Model download plus load can take a while on a cold machine."""
 SERVER_POLL_S = 5.0
 REQUEST_TIMEOUT_S = 1800.0
+# Context beyond the completion budget: a 1280 px plan image (about 1.2K tokens), the
+# prompt, and the chat template, with room to spare.
+PROMPT_CONTEXT_TOKENS = 8192
 """Thinking mode can generate for many minutes on one plan."""
 SERVE_SCRIPT = Path(__file__).resolve().parents[3] / "deploy" / "vllm" / "serve.sh"
 
@@ -118,15 +121,25 @@ def wait_for_server(base_url: str, process: subprocess.Popen[bytes], timeout_s: 
     raise TimeoutError(f"vLLM did not become ready within {timeout_s:.0f} s")
 
 
-@contextmanager
-def vllm_server(spec: BaselineSpec, log_path: Path, port: int = 8000) -> Iterator[str]:
-    """Run `serve.sh` for the duration of the block; yields the OpenAI base URL."""
-    env = {
-        **os.environ,
+def serve_env(spec: BaselineSpec, port: int) -> dict[str, str]:
+    """Settings for `serve.sh`.
+
+    The served context is sized from the request budget: vLLM rejects (HTTP 400) any
+    request whose prompt plus `max_tokens` exceeds `MAX_MODEL_LEN`, so raising
+    `--max-tokens` without it would turn every plan into an API error.
+    """
+    return {
         "MODEL": spec.model,
         "SERVED_NAME": spec.served_name,
         "SERVE_PORT": str(port),
+        "MAX_MODEL_LEN": str(spec.max_tokens + PROMPT_CONTEXT_TOKENS),
     }
+
+
+@contextmanager
+def vllm_server(spec: BaselineSpec, log_path: Path, port: int = 8000) -> Iterator[str]:
+    """Run `serve.sh` for the duration of the block; yields the OpenAI base URL."""
+    env = {**os.environ, **serve_env(spec, port)}
     with log_path.open("wb") as server_log:
         process = subprocess.Popen(
             ["bash", str(SERVE_SCRIPT)],
