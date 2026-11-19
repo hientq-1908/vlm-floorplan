@@ -168,7 +168,7 @@ A harder request that leaves them out is a later change to `request()` only, bec
  {"role": "assistant", "reasoning_content": "Now I turn the wall between r5 and r4 into a door.", "content": "",
   "tool_calls": [{"type": "function", "function": {"name": "set_link_kind", "arguments": {"room_a": "r5", "room_b": "r4", "kind": "door"}}}]},
  {"role": "tool", "name": "set_link_kind", "content": "OK: changed the link between r5 and r4 from wall to door.\nThe plan now has 6 rooms and 9 links (5 door, 1 opening, 3 wall)."},
- {"role": "assistant", "reasoning_content": "The room and everything the request lists are in place.", "content": "Added the storage at (850, 850) with wall to r3, door to r4."}
+ {"role": "assistant", "reasoning_content": "The room and everything the request lists are in place.", "content": "Added the storage at (850, 850). It has a shared wall with r3 (living) and a door to r4 (entry)."}
 ]}
 ```
 

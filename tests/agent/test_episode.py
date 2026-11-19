@@ -13,6 +13,8 @@ from vlm_floorplan.agent import (
 )
 from vlm_floorplan.agent.episode import sample_episodes
 from vlm_floorplan.agent.sample_plan import sample_record
+from vlm_floorplan.agent.tasks import candidate_tasks
+from vlm_floorplan.record import PlanRecord
 
 RECORD = sample_record()
 
@@ -75,3 +77,39 @@ def test_sample_episodes_covers_every_task_kind_and_is_reproducible() -> None:
     assert {episode["task"] for episode in first} == set(TASK_KINDS)
     assert first == sample_episodes([RECORD], per_kind=2, seed=3)
     assert all(episode["reward"] == pytest.approx(1.0) for episode in first)
+
+
+def _with_long_label(room_id: str) -> PlanRecord:
+    """The sample plan with one room named past add_room's 40-character label limit."""
+    graph = RECORD.graph
+    floors = [
+        floor.model_copy(
+            update={
+                "rooms": [
+                    room.model_copy(update={"label": "x" * 41}) if room.id == room_id else room
+                    for room in floor.rooms
+                ]
+            }
+        )
+        for floor in graph.floors
+    ]
+    return RECORD.model_copy(update={"graph": graph.model_copy(update={"floors": floors})})
+
+
+def test_an_episode_whose_scripted_call_is_refused_is_not_built() -> None:
+    with pytest.raises(ValueError, match="add_room was refused"):
+        build_episode(_with_long_label("r5"), DeleteRoomTask("r5"))
+
+
+def test_delete_room_tasks_skip_rooms_add_room_would_refuse() -> None:
+    tasks = candidate_tasks(_with_long_label("r5"), "delete_room")
+    assert "r5" not in {task.room_id for task in tasks}
+    assert tasks
+
+
+def test_the_delete_room_reply_lists_the_links_in_plain_english() -> None:
+    final = build_episode(RECORD, DeleteRoomTask("r5"))["messages"][-1]
+    assert final["content"] == (
+        "Added the storage at (850, 850). It has a shared wall with r3 (living)"
+        " and a door to r4 (entry)."
+    )

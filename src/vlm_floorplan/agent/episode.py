@@ -48,7 +48,11 @@ def assistant_turn(reasoning: str, content: str = "", call: Any = None) -> dict[
 
 
 def build_episode(record: PlanRecord, task: Task) -> dict[str, Any]:
-    """Run the scripted solution and return one TRL record (messages, tools, metadata)."""
+    """Run the scripted solution and return one TRL record (messages, tools, metadata).
+
+    Raises `ValueError` when the environment refuses a scripted call: such an episode would
+    teach the model a repair that does not work.
+    """
     env = FloorplanEditEnv()
     messages: list[dict[str, Any]] = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -57,6 +61,10 @@ def build_episode(record: PlanRecord, task: Task) -> dict[str, Any]:
     for call in env.solution():
         messages.append(assistant_turn(call.reasoning, call=call))
         text = env.step(call.name, call.arguments)
+        if env.rejected_calls:
+            raise ValueError(
+                f"{record.id}#{task.kind}: the scripted {call.name} was refused: {text}"
+            )
         messages.append({"role": "tool", "name": call.name, "content": text})
     reply = task.reply(record.graph)
     messages.append(assistant_turn(reply.reasoning, reply.text))

@@ -27,6 +27,7 @@ from typing import Any, Protocol
 from vlm_floorplan.agent.tools import NEW_PLAN, call_tool
 from vlm_floorplan.compact import to_compact
 from vlm_floorplan.edits.lookup import next_room_id
+from vlm_floorplan.edits.ops import MAX_LABEL_LENGTH
 from vlm_floorplan.edits.summary import summarize_graph
 from vlm_floorplan.record import PlanRecord
 from vlm_floorplan.schema import Floor, FloorplanGraph, Link, LinkKind, Room
@@ -113,23 +114,25 @@ class DeleteRoomTask:
         ]
         return sorted(found, key=lambda item: _room_number(item[0]))
 
-    def request(self, plan: FloorplanGraph) -> str:
-        room = _room(plan, self.room_id)
-        label = f" called '{room.label}'" if room.label else ""
-        text = f"Add a {_type_name(room)}{label} at ({room.xy[0]}, {room.xy[1]})."
+    def _connections(self, plan: FloorplanGraph) -> str:
+        """The sentence that lists the room's links, e.g. ' It has a door to r4 (entry).'"""
         phrases = {
             LinkKind.DOOR: "a door to",
             LinkKind.OPENING: "an opening to",
             LinkKind.WALL: "a shared wall with",
         }
         parts = [f"{phrases[kind]} {_name(plan, other)}" for other, kind in self._neighbours(plan)]
-        if room.entrance:
+        if _room(plan, self.room_id).entrance:
             parts.append("a door to the outside")
-        if parts:
-            text += (
-                f" It has {', '.join(parts[:-1])}{' and ' if len(parts) > 1 else ''}{parts[-1]}."
-            )
-        return text
+        if not parts:
+            return ""
+        return f" It has {', '.join(parts[:-1])}{' and ' if len(parts) > 1 else ''}{parts[-1]}."
+
+    def request(self, plan: FloorplanGraph) -> str:
+        room = _room(plan, self.room_id)
+        label = f" called '{room.label}'" if room.label else ""
+        text = f"Add a {_type_name(room)}{label} at ({room.xy[0]}, {room.xy[1]})."
+        return text + self._connections(plan)
 
     def solve(self, plan: FloorplanGraph, damaged: FloorplanGraph) -> list[ToolCall]:
         room = _room(plan, self.room_id)
@@ -180,13 +183,10 @@ class DeleteRoomTask:
 
     def reply(self, plan: FloorplanGraph) -> Reply:
         room = _room(plan, self.room_id)
-        parts = [f"{kind.value} to {other}" for other, kind in self._neighbours(plan)]
-        if room.entrance:
-            parts.append("a door to the outside")
-        text = f"Added the {_type_name(room)} at ({room.xy[0]}, {room.xy[1]})"
+        text = f"Added the {_type_name(room)} at ({room.xy[0]}, {room.xy[1]})."
         return Reply(
             "The room and everything the request lists are in place.",
-            text + f" with {', '.join(parts)}." if parts else text + ".",
+            text + self._connections(plan),
         )
 
 
@@ -273,7 +273,9 @@ def candidate_tasks(record: PlanRecord, kind: str) -> list[Task]:
         return [
             DeleteRoomTask(room.id)
             for room in plan.rooms()
-            if room.id in linked and room.type.value != "unknown"
+            if room.id in linked
+            and room.type.value != "unknown"
+            and len(room.label or "") <= MAX_LABEL_LENGTH
         ]
     if kind == "close_door":
         return [
