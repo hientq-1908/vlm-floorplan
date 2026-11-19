@@ -170,7 +170,6 @@ A task that is still queued or running is refused before anything is downloaded,
 If any check fails, the task is kept and the command exits with status 2.
 A failed or stopped task is downloaded the same way (its logs are the point) and deleted afterwards.
 A download directory that already has files is never overwritten.
-`--keep-task` downloads without deleting.
 
 The ClearML console log is fetched as the last 10,000 log events.
 The job also writes `job.log` and `vllm.log` into the result archive, and those are the complete logs.

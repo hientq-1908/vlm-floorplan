@@ -91,9 +91,8 @@ def prepare_run_dir(config: EvalConfig, run_dir: Path) -> None:
         old = json.loads(config_path.read_text())
         if any(old.get(k) != v for k, v in new.items() if k not in NON_IDENTITY_FIELDS):
             raise ValueError(f"{run_dir} holds a run with different settings; use a new --run-name")
-    else:
-        (run_dir / "inputs" / "images").mkdir(parents=True, exist_ok=True)
-        config_path.write_text(json.dumps(new, indent=2) + "\n")
+    (run_dir / "inputs" / "images").mkdir(parents=True, exist_ok=True)
+    config_path.write_text(json.dumps(new, indent=2) + "\n")
     (run_dir / "prompt.txt").write_text(build_prompt() + "\n")
 
 

@@ -190,27 +190,16 @@ def wait_until_finished(task_id: str, poll_s: float) -> str:
 
 def _collect(args: argparse.Namespace, task_id: str, run_name: str) -> CollectReport:
     dest = args.runs_dir / run_name
-    report = collect_and_delete(
-        ClearMlTask(task_id),
-        dest,
-        keep_task=args.keep_task,
-        require_console_log=not args.allow_missing_console_log,
-    )
+    report = collect_and_delete(ClearMlTask(task_id), dest)
     print(f"downloaded and verified: {report.dest}")
     for check in report.checks:
         print(f"  ok: {check}")
-    print("ClearML task deleted" if report.deleted else "ClearML task kept (--keep-task)")
+    print("ClearML task deleted")
     return report
 
 
 def _add_collect_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--runs-dir", type=Path, default=default_runs_dir())
-    parser.add_argument("--keep-task", action="store_true", help="download but do not delete")
-    parser.add_argument(
-        "--allow-missing-console-log",
-        action="store_true",
-        help="do not fail verification on an empty ClearML console log (job.log is still checked)",
-    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -273,7 +262,10 @@ def _launch(args: argparse.Namespace) -> int:
     try:
         print(f"finished as {wait_until_finished(task_id, args.poll_seconds)!r}")
     except KeyboardInterrupt:
-        sys.exit(f"stopped waiting; the task keeps running. Later: collect --task-id {task_id}")
+        sys.exit(
+            "stopped waiting; the task keeps running. "
+            f"Later: collect --task-id {task_id} --run-name {spec.run_name}"
+        )
     _collect(args, task_id, spec.run_name)
     return 0
 

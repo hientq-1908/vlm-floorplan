@@ -9,6 +9,7 @@ from helpers_eval import gt_record
 from PIL import Image
 
 from vlm_floorplan.compact import to_compact
+from vlm_floorplan.evaluation.cli import main as cli_main
 from vlm_floorplan.evaluation.client import ApiError, ChatResponse, parse_chat_response
 from vlm_floorplan.evaluation.config import EvalConfig
 from vlm_floorplan.evaluation.harness import collect_outputs
@@ -174,6 +175,19 @@ def test_resume_allows_a_new_server_url_and_concurrency(split: Path, tmp_path: P
     collect_outputs(config_for(split), FakeClient([reply("{}")]), run_dir)
     moved = config_for(split, base_url="http://other:9000/v1", concurrency=8)
     collect_outputs(moved, FakeClient([]), run_dir)
+
+
+def test_resume_without_limit_lets_rescore_cover_every_plan(split: Path, tmp_path: Path) -> None:
+    second = gt_record().model_copy(update={"id": "synthetic/second"})
+    with split.open("a") as handle:
+        handle.write(second.model_dump_json() + "\n")
+    out_dir = tmp_path / "runs"
+    answer = reply(to_compact(gt_record().graph))
+    collect_outputs(config_for(split, limit=1), FakeClient([answer]), out_dir / "test-run")
+    collect_outputs(config_for(split), FakeClient([answer]), out_dir / "test-run")
+    assert cli_main(["rescore", str(out_dir / "test-run")]) == 0
+    metrics = json.loads((out_dir / "test-run" / "metrics.json").read_text())
+    assert metrics["n_plans"] == 2
 
 
 def test_rescoring_uses_saved_outputs_only(split: Path, tmp_path: Path) -> None:

@@ -74,7 +74,6 @@ class RemoteTask(Protocol):
 class CollectReport:
     dest: Path
     status: str
-    deleted: bool
     checks: list[str] = field(default_factory=list)
 
 
@@ -124,9 +123,7 @@ def _check_result(result_dir: Path) -> list[str]:
     return checks
 
 
-def collect_and_delete(
-    task: RemoteTask, dest: Path, *, keep_task: bool = False, require_console_log: bool = True
-) -> CollectReport:
+def collect_and_delete(task: RemoteTask, dest: Path) -> CollectReport:
     """Download everything to `dest`, verify it, then delete the remote task.
 
     Raises `DownloadVerificationError` (and leaves the task alone) when anything is off.
@@ -146,7 +143,7 @@ def collect_and_delete(
     _write_json(dest / "scalars.json", task.scalars())
     log = task.console_log()
     (dest / "console.log").write_text(log.text)
-    if require_console_log and not log.text.strip():
+    if not log.text.strip():
         raise DownloadVerificationError("the console log is empty")
     checks.append(
         "console log saved" + (" (truncated, see job.log in the result)" if log.truncated else "")
@@ -171,8 +168,5 @@ def collect_and_delete(
             "checks": checks,
         },
     )
-    deleted = False
-    if not keep_task:
-        task.delete()
-        deleted = True
-    return CollectReport(dest=dest, status=status, deleted=deleted, checks=checks)
+    task.delete()
+    return CollectReport(dest=dest, status=status, checks=checks)

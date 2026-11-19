@@ -72,19 +72,13 @@ def good_task(tmp_path: Path, **kwargs: Any) -> FakeTask:
 def test_verified_download_is_saved_then_task_deleted(tmp_path: Path) -> None:
     task = good_task(tmp_path)
     dest = tmp_path / "runs" / "my-run"
-    report = collect_and_delete(task, dest)
-    assert task.deleted and report.deleted
+    collect_and_delete(task, dest)
+    assert task.deleted
     assert (dest / "result" / "long-side-768" / "metrics.json").is_file()
     assert (dest / "console.log").read_text().startswith("job started")
     assert json.loads((dest / "scalars.json").read_text())["validity_rate"]
     assert json.loads((dest / "task.json").read_text()) == {"id": "abc123"}
     assert json.loads((dest / VERIFIED_MARKER).read_text())["task_id"] == "abc123"
-
-
-def test_keep_task_downloads_without_deleting(tmp_path: Path) -> None:
-    task = good_task(tmp_path)
-    assert not collect_and_delete(task, tmp_path / "out", keep_task=True).deleted
-    assert not task.deleted
 
 
 def test_size_mismatch_blocks_deletion(tmp_path: Path) -> None:
@@ -141,17 +135,16 @@ def test_completed_task_without_result_archive_blocks_deletion(tmp_path: Path) -
 
 def test_failed_task_keeps_logs_and_is_deleted_after_download(tmp_path: Path) -> None:
     task = FakeTask({}, status="failed", log_text="Traceback ...\n")
-    report = collect_and_delete(task, tmp_path / "out")
-    assert report.deleted and task.deleted
+    collect_and_delete(task, tmp_path / "out")
+    assert task.deleted
     assert (tmp_path / "out" / "console.log").read_text().startswith("Traceback")
 
 
-def test_empty_console_log_blocks_deletion_unless_allowed(tmp_path: Path) -> None:
+def test_empty_console_log_blocks_deletion(tmp_path: Path) -> None:
     task = good_task(tmp_path, log_text="")
     with pytest.raises(DownloadVerificationError, match="console log"):
         collect_and_delete(task, tmp_path / "out")
     assert not task.deleted
-    assert collect_and_delete(task, tmp_path / "out2", require_console_log=False).deleted
 
 
 def test_existing_destination_is_never_overwritten(tmp_path: Path) -> None:
