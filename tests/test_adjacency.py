@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from shapely.geometry import box
+from shapely.geometry import Point, box
 from shapely.geometry.base import BaseGeometry
 
 from vlm_floorplan.converters.adjacency import link_adjacent_rooms
@@ -62,5 +62,57 @@ def test_msd_rooms_sharing_a_3m_side_get_a_wall_link(
     floor = _floor(*rooms)
 
     link_adjacent_rooms(floor, MSD_ADJACENCY)
+
+    assert floor.links == {(0, 1): LinkKind.WALL}
+
+
+def test_rooms_overlapping_10cm_at_an_offset_corner_of_a_wall_junction_are_not_linked() -> None:
+    # B sits across the wall junction from A and overlaps A's side by only 0.1 m,
+    # below the 0.5 m the rooms must run alongside each other.
+    rooms = (box(0, 0, 4, 3), box(4.2, 2.9, 8, 6))
+    walls = box(4, 0, 4.2, 3.2).union(box(0, 3, 8, 3.2))
+
+    msd_floor, swiss_floor = _floor(*rooms), _floor(*rooms)
+    link_adjacent_rooms(msd_floor, MSD_ADJACENCY)
+    link_adjacent_rooms(swiss_floor, SWISS_ADJACENCY, walls=walls)
+
+    assert (msd_floor.links, swiss_floor.links) == ({}, {})
+
+
+def test_rooms_touching_only_at_a_corner_are_not_linked() -> None:
+    floor = _floor(box(0, 0, 4, 3), box(4, 3, 8, 6))
+
+    link_adjacent_rooms(floor, MSD_ADJACENCY)
+
+    assert floor.links == {}
+
+
+def test_a_room_reaching_another_with_two_short_legs_is_not_linked() -> None:
+    # Two 0.15 m legs of a U-shaped room, 0.5 m apart, end a wall above A:
+    # 0.3 m of contact in total, so the 0.5 m between the legs must not count.
+    legs = box(1, 3.2, 1.15, 6).union(box(1.65, 3.2, 1.8, 6)).union(box(0, 6, 4, 7))
+    floor = _floor(box(0, 0, 4, 3), legs)
+
+    link_adjacent_rooms(floor, MSD_ADJACENCY)
+
+    assert floor.links == {}
+
+
+def test_rooms_along_a_curved_wall_built_from_short_facets_are_linked() -> None:
+    # A circle of radius 3 and a ring from radius 3.2, both made of ~0.3 m facets,
+    # run about 4.9 m alongside each other in the first quadrant.
+    inner = Point(0, 0).buffer(3)
+    ring = Point(0, 0).buffer(6).difference(Point(0, 0).buffer(3.2)).intersection(box(0, 0, 7, 7))
+    floor = _floor(inner, ring)
+
+    link_adjacent_rooms(floor, MSD_ADJACENCY)
+
+    assert floor.links == {(0, 1): LinkKind.WALL}
+
+
+def test_swiss_rooms_exactly_a_full_wall_gap_apart_with_wall_between_are_linked() -> None:
+    floor = _floor(box(0, 0, 4, 3), box(4.4, 0, 8, 3))
+
+    link_adjacent_rooms(floor, SWISS_ADJACENCY, walls=box(4, 0, 4.4, 3))
 
     assert floor.links == {(0, 1): LinkKind.WALL}

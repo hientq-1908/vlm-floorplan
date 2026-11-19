@@ -27,18 +27,17 @@ holds one graph per floor and never links rooms across floors.
 
 from __future__ import annotations
 
-import math
-from itertools import combinations, pairwise
+from itertools import combinations
 from pathlib import Path
 
 from PIL import Image
 from shapely.geometry import Polygon
-from shapely.geometry.polygon import orient
 from shapely.ops import unary_union
 
 from vlm_floorplan.converters.assemble import SourceFloor, SourceRoom, assemble
 from vlm_floorplan.converters.cubicasa_svg import SvgFloor, parse_svg
-from vlm_floorplan.geometry import GridFrame, largest_polygon, polygon_parts
+from vlm_floorplan.converters.facing import facing_length
+from vlm_floorplan.geometry import GridFrame, largest_polygon
 from vlm_floorplan.record import PlanRecord
 from vlm_floorplan.room_types import cubicasa_room_type
 from vlm_floorplan.schema import ImageSize, LinkKind
@@ -99,41 +98,6 @@ def _link_doors(floor: SourceFloor, svg_floor: SvgFloor, warnings: list[str]) ->
             warnings.append(f"floor {svg_floor.number}: door touching {len(hits)} room(s) skipped")
 
 
-def _facing_length(a: Polygon, b: Polygon, gap: float) -> float:
-    """Length of a's outline that faces b across at most `gap` px.
-
-    For each edge of a, the rectangle `gap` px deep in front of it is intersected
-    with b, and the hit is projected back onto the edge.
-    """
-    coords = list(orient(a, sign=1.0).exterior.coords)  # counter-clockwise
-    total = 0.0
-    for (x0, y0), (x1, y1) in pairwise(coords):
-        length = math.hypot(x1 - x0, y1 - y0)
-        if length == 0:
-            continue
-        ux, uy = (x1 - x0) / length, (y1 - y0) / length
-        nx, ny = uy, -ux  # outward normal: right of a counter-clockwise edge
-        front = Polygon(
-            [(x0, y0), (x1, y1), (x1 + nx * gap, y1 + ny * gap), (x0 + nx * gap, y0 + ny * gap)]
-        )
-        spans = []
-        for piece in polygon_parts(front.intersection(b)):
-            ts = [(x - x0) * ux + (y - y0) * uy for x, y in piece.exterior.coords]
-            spans.append((min(ts), max(ts)))
-        total += _union_length(spans)
-    return total
-
-
-def _union_length(spans: list[tuple[float, float]]) -> float:
-    """Total length covered by possibly overlapping intervals."""
-    total, reach = 0.0, -math.inf
-    for start, end in sorted(spans):
-        if end > reach:
-            total += end - max(start, reach)
-            reach = end
-    return total
-
-
 def _wall_cover(a: Polygon, b: Polygon, walls: Polygon) -> float:
     """Share of the strip between two rooms that is covered by wall."""
     half = WALL_MAX_GAP_PX / 2
@@ -152,11 +116,11 @@ def _link_neighbours(floor: SourceFloor, svg_floor: SvgFloor) -> None:
             continue
         if (
             distance <= OPENING_MAX_GAP_PX
-            and _facing_length(a, b, OPENING_MAX_GAP_PX) >= MIN_SHARED_PX
+            and facing_length(a, b, OPENING_MAX_GAP_PX) >= MIN_SHARED_PX
         ):
             floor.link(i, j, LinkKind.OPENING)
         elif (
-            _facing_length(a, b, WALL_MAX_GAP_PX) >= MIN_SHARED_PX
+            facing_length(a, b, WALL_MAX_GAP_PX) >= MIN_SHARED_PX
             and _wall_cover(a, b, walls) >= MIN_WALL_COVER
         ):
             floor.link(i, j, LinkKind.WALL)

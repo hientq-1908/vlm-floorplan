@@ -48,7 +48,7 @@ A test feeds it a pickle that tries to run a shell command and checks that nothi
 | MSD `passage` edge, Swiss rooms that touch (gap of at most 4 cm) | `opening` |
 | MSD `entrance` edge | `door`, plus the `entrance` flag |
 | Swiss `ENTRANCE_DOOR` polygon | the `entrance` flag on the room it opens into |
-| Rooms a wall apart (gap of at most 0.4 m, with at least 0.5 m of one room's outline within that gap of the other) | `wall` |
+| Rooms a wall apart (gap of at most 0.4 m, with at least 0.5 m of one room's outline facing the other straight across that gap) | `wall` |
 
 The thresholds come from measuring real plans, not from guessing.
 In 40 MSD plans, door-linked rooms are a median 0.15 m apart, passage-linked rooms 0.01 m, and rooms that share a wall without any edge are up to about 0.4 m apart.
@@ -113,8 +113,8 @@ Both builds ran on the complete data without a single skipped plan (checked 2026
 |---|---|---|
 | Records | 4167 | 45 242 |
 | Rooms per record (min, median, max) | 15, 25, 331 | 1, 8, 567 |
-| Links | 135 653 wall, 116 374 door, 17 215 opening | 227 911 wall, 304 679 door, 44 039 opening |
-| Rooms with no link at all | 100 of 132 232 | 1107 of 371 434 |
+| Links | 126 045 wall, 116 374 door, 17 215 opening | 212 870 wall, 304 679 door, 43 993 opening |
+| Rooms with no link at all | 114 of 132 232 | 1131 of 371 434 |
 | Records with no entrance flag | 339 (no entrance edge) | 1742 floors of 47 000 |
 | Build time | 3 minutes | 11 minutes |
 
@@ -128,10 +128,7 @@ The largest records (hundreds of rooms) will not fit a model's context as compac
   The reader holds one site at a time and reports any site that reappears later, instead of silently building half-apartments.
 - Links are derived from geometry, so they are only as good as the thresholds.
   A door that reaches fewer than two rooms is skipped, and the skip is recorded in the record's `quality.warnings`.
-- A derived `wall` link can appear between rooms that only meet at a corner.
-  The run along the wall is measured as the length of one room's outline within the wall gap of the other, the same measure the CubiCasa5K converter uses.
-  Around a corner that length is about 0.8 m, which passes `min_shared`.
-  Swiss Dwellings checks the wall layer as well, which removes most of these.
-  MSD has no wall layer, so a few more of its wall links are corner contacts.
-  Wall links are the weakest link kind, and a sharper geometric measure was tried and dropped because each variant broke another case.
+- Derived `wall` and `opening` links measure how far one room's outline faces the other straight across the gap, the same measure the CubiCasa5K converter uses (`converters/facing.py`).
+  Rooms that meet only at a corner, or overlap at an offset corner by less than 0.5 m, face each other along too little and stay unlinked, even in MSD, which has no wall layer to check.
+  The measure looks only at outlines, so in MSD two rooms 0.4 m apart are linked as `wall` even if the gap is really a shaft or a gap in the drawing.
 - Swiss `ROOM` becoming `bedroom` is a coarse guess: it is an undesignated private room, mostly a bedroom.

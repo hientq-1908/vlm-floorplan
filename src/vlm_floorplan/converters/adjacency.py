@@ -11,20 +11,16 @@ two room polygons are:
   metres. A pair that nearly touches at a corner but also runs alongside a wall
   still gets its `wall` link: the corner does not hide it.
 
-"Alongside" is the length of one room's outline that lies within the gap of the
-other room.
-This is the same measure the CubiCasa5K converter uses, so the three
-converters link rooms by one rule.
+"Alongside" is the length of one room's outline that faces the other straight
+across the gap (`facing.facing_length`), the measure the CubiCasa5K converter
+uses too, so the three converters link rooms by one rule.
+Rooms that meet only at a corner face each other along nothing, rooms whose
+corners overlap by 10 cm face each other along 10 cm, and a room that reaches
+another twice counts only the two stretches, not the space between them.
 
-Known limit: rooms that meet only at a corner are measured over the 0.4 m reach
-around that corner, so a corner contact can pass `min_shared`, and then it gets
-a `wall` link although the rooms do not run alongside each other.
-Swiss Dwellings is guarded by its wall-cover check.
-MSD has no wall layer, so there a corner contact can produce a wall link.
-A sharper measure (projecting both rooms onto their facing edges) was tried and
-dropped: each variant fixed one geometry and broke another (offset corners, rooms
-touching twice, curved walls built from short facets), for a link that is a weak
-signal in the first place.
+A pair exactly `wall_gap` apart still counts: both gaps are widened by
+`EDGE_TOLERANCE` before measuring, so float rounding, the zero-area contact at
+the far edge of the gap, and an empty strip between the rooms do not drop it.
 
 With a wall layer, the strip between the rooms (the area outside both that lies
 within half the wall gap of each) also tells how much of the gap is wall.
@@ -42,6 +38,7 @@ from itertools import combinations
 from shapely.geometry.base import BaseGeometry
 
 from vlm_floorplan.converters.assemble import SourceFloor
+from vlm_floorplan.converters.facing import facing_length
 from vlm_floorplan.schema import LinkKind
 
 
@@ -59,9 +56,8 @@ class AdjacencyRules:
     """With a wall layer: share of the gap strip that must be wall (0 disables the check)."""
 
 
-def _shared_length(a: BaseGeometry, b: BaseGeometry, gap: float) -> float:
-    """Length of a's outline that lies within `gap` of b."""
-    return a.boundary.intersection(b.buffer(gap)).length
+EDGE_TOLERANCE = 1e-3
+"""Metres added to a gap, so rooms exactly that far apart still count as within it."""
 
 
 def _strip_between(a: BaseGeometry, b: BaseGeometry, gap: float) -> BaseGeometry:
@@ -81,22 +77,24 @@ def link_adjacent_rooms(
     floor: SourceFloor, rules: AdjacencyRules, walls: BaseGeometry | None = None
 ) -> None:
     """Add `opening` and `wall` links between rooms of one floor, in place."""
+    wall_gap = rules.wall_gap + EDGE_TOLERANCE
+    opening_gap = None if rules.opening_gap is None else rules.opening_gap + EDGE_TOLERANCE
     for i, j in combinations(range(len(floor.rooms)), 2):
         a, b = floor.rooms[i].geometry, floor.rooms[j].geometry
         distance = a.distance(b)
-        if distance > rules.wall_gap:
+        if distance > wall_gap:
             continue
         if (
-            rules.opening_gap is not None
-            and distance <= rules.opening_gap
-            and _shared_length(a, b, rules.opening_gap) >= rules.min_shared
+            opening_gap is not None
+            and distance <= opening_gap
+            and facing_length(a, b, opening_gap) >= rules.min_shared
         ):
             floor.link(i, j, LinkKind.OPENING)
             continue
-        if _shared_length(a, b, rules.wall_gap) < rules.min_shared:
+        if facing_length(a, b, wall_gap) < rules.min_shared:
             continue
         if walls is not None:
-            strip = _strip_between(a, b, rules.wall_gap)
+            strip = _strip_between(a, b, wall_gap)
             if _wall_cover(strip, walls) < rules.min_wall_cover:
                 continue
         floor.link(i, j, LinkKind.WALL)
