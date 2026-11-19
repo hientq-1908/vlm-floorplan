@@ -25,13 +25,14 @@ from typing import Any
 from vlm_floorplan.edits import link_edits, room_edits
 from vlm_floorplan.edits.change import Change
 from vlm_floorplan.edits.ops import (
+    AddExteriorDoor,
     AddLink,
     AddRoom,
     DeleteRoom,
     EditOp,
     MoveRoom,
+    RemoveExteriorDoor,
     RemoveLink,
-    SetEntrance,
     SetLinkKind,
     SetRoomLabel,
     SetRoomType,
@@ -52,7 +53,8 @@ _HANDLERS: dict[type, Callable[[FloorplanGraph, Any], Change | EditError]] = {
     DeleteRoom: room_edits.delete_room,
     SetRoomType: room_edits.set_room_type,
     SetRoomLabel: room_edits.set_room_label,
-    SetEntrance: room_edits.set_entrance,
+    AddExteriorDoor: room_edits.add_exterior_door,
+    RemoveExteriorDoor: room_edits.remove_exterior_door,
     AddLink: link_edits.add_link,
     RemoveLink: link_edits.remove_link,
     SetLinkKind: link_edits.set_link_kind,

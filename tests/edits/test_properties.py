@@ -14,6 +14,7 @@ import pytest
 
 from vlm_floorplan.compact import from_compact, to_compact
 from vlm_floorplan.edits import (
+    AddExteriorDoor,
     AddLink,
     AddRoom,
     DeleteRoom,
@@ -22,8 +23,8 @@ from vlm_floorplan.edits import (
     EditOp,
     EditRejected,
     MoveRoom,
+    RemoveExteriorDoor,
     RemoveLink,
-    SetEntrance,
     SetLinkKind,
     SetRoomLabel,
     SetRoomType,
@@ -66,7 +67,8 @@ def random_op(rng: random.Random, graph: FloorplanGraph) -> EditOp:
         lambda: DeleteRoom(room_id=pick()),
         lambda: SetRoomType(room_id=pick(), type=rng.choice(list(RoomType))),
         lambda: SetRoomLabel(room_id=pick(), label=rng.choice(LABELS)),
-        lambda: SetEntrance(room_id=pick(), entrance=rng.random() < 0.5),
+        lambda: AddExteriorDoor(room_id=pick()),
+        lambda: RemoveExteriorDoor(room_id=pick()),
         lambda: AddLink(room_a=pick(), room_b=pick(), kind=kind),
         lambda: RemoveLink(room_a=pick(), room_b=pick()),
         lambda: SetLinkKind(room_a=pick(), room_b=pick(), kind=kind),
@@ -164,5 +166,5 @@ def test_the_random_runs_exercise_both_outcomes_and_every_op_kind() -> None:
                 applied_ops.add(type(outcome.op).__name__)
             else:
                 rejected_codes.add(outcome.error.code)
-    assert len(applied_ops) == 9
+    assert len(applied_ops) == 10
     assert len(rejected_codes) >= 6

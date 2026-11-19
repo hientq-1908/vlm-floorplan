@@ -21,7 +21,7 @@ That makes undo cheap (keep the old graph) and makes replays trivially safe.
 
 | Op | Arguments | Notes |
 |----|-----------|-------|
-| `add_room` | `type`, `x`, `y`, optional `label`, `floor`, `entrance` | The id is assigned (next free number). The new room has no links. |
+| `add_room` | `type`, `x`, `y`, optional `label`, `floor` | The id is assigned (next free number). The new room has no links and no exterior door. |
 | `move_room` | `room_id`, `x`, `y` | Changes only the point. |
 | `delete_room` | `room_id` | Drops every link that touches the room. |
 | `set_room_type` | `room_id`, `type` | |
@@ -29,8 +29,11 @@ That makes undo cheap (keep the old graph) and makes replays trivially safe.
 | `add_link` | `room_a`, `room_b`, `kind` | Only `wall` between unlinked rooms. See "Doors only go into shared walls". |
 | `remove_link` | `room_a`, `room_b` | Removes adjacency entirely. To close a door, use `set_link_kind` with `wall`. |
 | `set_link_kind` | `room_a`, `room_b`, `kind` | The pair must already be linked. The only way to change a link's kind. |
-| `set_entrance` | `room_id`, `entrance` | |
+| `add_exterior_door` | `room_id` | Marks that a door to the outside opens into the room (sets its `entrance` flag). Refused with `no_change` when the room already has one. |
+| `remove_exterior_door` | `room_id` | Clears the flag. Refused with `no_change` when the room has none. |
 
+A room's exterior door is one flag on the room (`entrance`), set and cleared by two tools that mirror each other.
+A new room never starts with one: `add_room` has no entrance argument, so the outside door is a separate, visible call.
 Walls and geometry are never edited.
 `move_room` moves a graph node, not a wall.
 
