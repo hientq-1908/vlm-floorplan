@@ -190,6 +190,29 @@ def test_resume_without_limit_lets_rescore_cover_every_plan(split: Path, tmp_pat
     assert metrics["n_plans"] == 2
 
 
+@pytest.mark.parametrize("point_at_dir", [False, True])
+def test_rescore_split_override_finds_a_moved_split(
+    split: Path, tmp_path: Path, point_at_dir: bool
+) -> None:
+    run_dir = tmp_path / "runs" / "test-run"
+    answer = reply(to_compact(gt_record().graph))
+    gone = tmp_path / "agent-tmp"
+    gone.mkdir()
+    agent_split = gone / "split.jsonl"
+    agent_split.write_text(split.read_text())
+    (gone / "plan0.png").write_bytes((split.parent / "plan0.png").read_bytes())
+    collect_outputs(config_for(agent_split), FakeClient([answer]), run_dir)
+    config_before = (run_dir / "config.json").read_text()
+    for path in gone.iterdir():
+        path.unlink()
+    gone.rmdir()
+    override = split.parent if point_at_dir else split
+    assert cli_main(["rescore", str(run_dir), "--split", str(override)]) == 0
+    metrics = json.loads((run_dir / "metrics.json").read_text())
+    assert (metrics["n_plans"], metrics["overall"]["room_recall"]) == (1, 1.0)
+    assert (run_dir / "config.json").read_text() == config_before
+
+
 def test_rescoring_uses_saved_outputs_only(split: Path, tmp_path: Path) -> None:
     run_dir = tmp_path / "run"
     config = config_for(split)

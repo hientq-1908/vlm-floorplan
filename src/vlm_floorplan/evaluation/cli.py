@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from vlm_floorplan.evaluation.baseline_spec import SPLIT_FILE_IN_ARCHIVE
 from vlm_floorplan.evaluation.client import HttpChatClient
 from vlm_floorplan.evaluation.config import EvalConfig
 from vlm_floorplan.evaluation.harness import collect_outputs, load_records
@@ -81,11 +82,20 @@ def main(argv: list[str] | None = None) -> int:
     _add_run_arguments(sub.add_parser("run", help="call the endpoint, then score"))
     rescore = sub.add_parser("rescore", help="score saved outputs again, no model calls")
     rescore.add_argument("run_dir", type=Path)
+    rescore.add_argument(
+        "--split",
+        type=Path,
+        help="split JSONL, or the unpacked split directory, when config.json's path is gone "
+        "(a collected ClearML run records the agent's temporary copy); config.json is unchanged",
+    )
     args = parser.parse_args(argv)
 
     if args.command == "rescore":
         config = EvalConfig.model_validate_json((args.run_dir / "config.json").read_text())
-        records = load_records(Path(config.split), config.limit)
+        split = args.split or Path(config.split)
+        if split.is_dir():
+            split = split / SPLIT_FILE_IN_ARCHIVE
+        records = load_records(split, config.limit)
         run_dir = args.run_dir
     else:
         config = config_from_args(args)

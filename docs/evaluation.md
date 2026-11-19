@@ -143,6 +143,15 @@ uv run --group ml python scripts/clearml_baseline.py collect --task-id TASK_ID -
 ```
 
 Results go to `~/Documents/pets/vlm-floorplan-runs/<run-name>/`.
+Each collected run's `config.json` names the split path the agent used, a temporary copy that no longer exists.
+To rescore it locally, point `--split` at your own copy of the split, either the JSONL or the unpacked split directory:
+
+```bash
+uv run python -m vlm_floorplan.evaluation rescore \
+  ~/Documents/pets/vlm-floorplan-runs/<run-name>/result/long-side-768 --split data/splits/test.jsonl
+```
+
+The override applies to that rescore only; `config.json` is left as it was, so it still matches the run.
 Change the root with `--runs-dir` or the `VLM_FLOORPLAN_RUNS_DIR` environment variable.
 
 Credentials are never in the repository.

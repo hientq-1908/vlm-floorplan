@@ -92,19 +92,29 @@ def _json_candidates(text: str) -> tuple[list[Any], list[str]]:
 
     Scans for each `{` and tries `raw_decode`, skipping past what it consumed, so a
     leading sentence or several fenced blocks are fine.
+
+    An unfinished object does not end the scan: thinking models often abandon a
+    draft and write the full answer after it, so a later complete graph still
+    counts. Once an object is left open, though, every later `{` may sit inside it,
+    so from then on only whole graphs (with "floors") are kept. Otherwise one
+    finished floor of a truncated multi-floor answer would pass as the whole plan.
     """
     decoder = json.JSONDecoder()
     found: list[Any] = []
     problems: list[str] = []
+    inside_unfinished = False
     pos = 0
     while (start := text.find("{", pos)) != -1:
         try:
             obj, end = decoder.raw_decode(text, start)
         except json.JSONDecodeError as err:
-            problem = _classify_json_failure(text[start:], err)
-            problems.append(problem)
-            if problem.startswith(ParseError.TRUNCATED):
-                break  # the rest of the text is inside this unfinished object
+            if not inside_unfinished:
+                problem = _classify_json_failure(text[start:], err)
+                problems.append(problem)
+                inside_unfinished = problem.startswith(ParseError.TRUNCATED)
+            pos = start + 1
+            continue
+        if inside_unfinished and not (isinstance(obj, dict) and "floors" in obj):
             pos = start + 1
             continue
         found.append(obj)

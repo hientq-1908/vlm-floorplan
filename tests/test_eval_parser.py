@@ -126,6 +126,23 @@ def test_truncated_reasoning_with_no_answer_is_truncated_not_no_json() -> None:
     assert result.error == ParseError.TRUNCATED
 
 
+def test_unclosed_draft_before_the_final_graph_does_not_hide_it() -> None:
+    text = f'Draft: {{"floors": [ hmm, let me redo.\n{COMPACT}'
+    assert parse_model_output(text, IMAGE).graph == GRAPH
+    result = parse_model_output("", IMAGE, reasoning=text)
+    assert (result.graph, result.source) == (GRAPH, Source.REASONING)
+
+
+def test_finished_floor_of_a_truncated_multi_floor_answer_is_not_the_plan() -> None:
+    data = json.loads(COMPACT)
+    second = {**data["floors"][0], "floor": 2}
+    two_floors = json.dumps({"floors": [data["floors"][0], second]})
+    cut = two_floors[: two_floors.index('"floor": 2') + 20]
+    result = parse_model_output(cut, IMAGE)
+    assert result.graph is None
+    assert result.error == ParseError.TRUNCATED
+
+
 def test_parser_never_raises_on_garbage() -> None:
     for text in ["}{", "{" * 50, '{"a":', "\x00\x01", "```json\n```", "<think>", "[[[[", "{}"]:
         assert not parse_model_output(text, IMAGE).ok
