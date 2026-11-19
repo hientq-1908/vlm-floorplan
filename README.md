@@ -16,10 +16,11 @@ This repository currently holds milestone M1:
 - the graph schema (`schema.py`, `room_types.py`, `compact.py`, `record.py`),
 - a CubiCasa5K converter (`converters/`),
 - a fetch script and a build script for CubiCasa5K (`data/`),
+- a ResPlan converter, renderer and build script (`resplan/`),
 - an overlay viewer and an HTML contact sheet (`viewer/`),
 - tests, including a CPU check of the training format.
 
-Planned next: ResPlan, MSD and Swiss Dwellings converters, a zero-shot baseline, perception fine-tuning, the editing agent, the app and retrieval.
+Planned next: MSD and Swiss Dwellings converters, a zero-shot baseline, perception fine-tuning, the editing agent, the app and retrieval.
 See the milestone list in `docs/architecture.md`.
 
 ## Quick start
@@ -73,6 +74,22 @@ A hollow grey dot is a room whose type the dataset does not say (`unknown`).
 A green ring marks a room with an exterior door.
 Door links are thick orange lines, openings are dashed blue lines, and wall links are thin dotted grey lines.
 
+## ResPlan data
+
+ResPlan (<https://github.com/m-agour/ResPlan>) provides 17,000 vector floorplans.
+This project turns them into room graphs and renders them as images.
+The data is licensed CC BY 4.0 and its code MIT, so attribution is required: see `THIRD_PARTY_NOTICES.md`.
+
+```bash
+uv run python -m vlm_floorplan.resplan.fetch   # about 100 MB into the gitignored data/resplan
+uv run python -m vlm_floorplan.resplan.build   # records and images into data/resplan/processed
+```
+
+Takedowns: ResPlan removes a plan when a rights holder asks, and then lists its id.
+The fetch script checks for that list and tells you when it exists.
+Put removed ids in a file and pass it to the builder with `--exclude-ids`.
+Design notes and the takedown procedure are in `docs/resplan.md`.
+
 ## Project layout
 
 | Path | What it holds |
@@ -83,6 +100,7 @@ Door links are thick orange lines, openings are dashed blue lines, and wall link
 | `src/vlm_floorplan/record.py` | `PlanRecord`: a graph plus polygons, source labels and quality flags. |
 | `src/vlm_floorplan/converters/` | CubiCasa5K SVG parsing and conversion to a record. |
 | `src/vlm_floorplan/data/` | Fetch (range requests), build (JSONL) and JSONL helpers. |
+| `src/vlm_floorplan/resplan/` | ResPlan fetch, plan-to-graph converter, PNG renderer and build script. |
 | `src/vlm_floorplan/viewer/` | The overlay drawing and the contact sheet. |
 | `tests/` | Unit tests on synthetic fixtures, plus the training-format tests. |
 
@@ -94,7 +112,7 @@ Please keep it that way: do not use the data, anything derived from it, or model
 | Dataset | License | Used for |
 |---|---|---|
 | [CubiCasa5K](https://github.com/CubiCasa/CubiCasa5k) | CC BY-NC 4.0 in the repository, CC BY-NC-SA 4.0 on the [Zenodo record](https://zenodo.org/records/2613548). Treat it as non-commercial and share-alike. | Real floorplan images with room polygons and doors. |
-| [ResPlan](https://github.com/m-agour/ResPlan) | Data CC BY 4.0, code MIT. It ships vectors only, no images. | Planned. |
+| [ResPlan](https://github.com/m-agour/ResPlan) | Data CC BY 4.0, code MIT. It ships vectors only, no images. | Room graphs for editing practice and retrieval, plus rendered images for perception augmentation. |
 | [MSD](https://data.4tu.nl/datasets/e1d89cb5-6872-48fc-be63-aadd687ee6f9) | CC BY 4.0 | Planned. |
 | [Swiss Dwellings](https://zenodo.org/records/7788422) | CC BY 4.0 | Planned. |
 
