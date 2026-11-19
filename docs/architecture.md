@@ -84,7 +84,7 @@ This idea comes from paperbanana's `DiagramIR`, which validates references in th
 The coarse type set is `living, kitchen, dining, bedroom, bathroom, entry, storage, utility, outdoor, garage, stairs, other, unknown`.
 It is deliberately small, for two reasons.
 A 4B model has to predict it from an image, and the retrieval tool in M6 has to compare plans from different datasets.
-`room_types.py` maps CubiCasa5K (60+ raw classes), ResPlan (7 plus a front door) and MSD (9) into this set.
+`room_types.py` maps CubiCasa5K (60+ raw classes), ResPlan (7 plus a front door), MSD (9) and Swiss Dwellings (77 `area` subtypes) into this set.
 
 `unknown` is different from `other`.
 `other` is a labeled room that fits no category (an office, an attic).
@@ -191,14 +191,14 @@ Thinking mode was chosen anyway, so the editing episodes need a short reasoning 
 | # | Milestone | Notes |
 |---|---|---|
 | M0 | Decisions | The list above. |
-| M1 | Schema, converters, overlay viewer, CPU format tests | This repository. The CubiCasa5K and ResPlan converters are built so far (ResPlan: `docs/resplan.md`). |
+| M1 | Schema, converters, overlay viewer, CPU format tests | This repository. The CubiCasa5K, ResPlan, MSD and Swiss Dwellings converters are built (ResPlan: `docs/resplan.md`, MSD and Swiss Dwellings: `docs/msd-swiss.md`). |
 | M2 | Zero-shot baseline, served through vLLM | One cheap ClearML job. Measures the base model at two image resolutions and checks that it uses the 0 to 1000 grid. |
 | M3 | Perception SFT | LoRA on the language model with the vision tower frozen, evaluated through vLLM with the adapter. |
 | M4 | App skeleton | Core library (edit ops, validator, renderer, metrics), FastAPI agent loop and a React Flow UI. It depends only on the schema, so it can run in parallel with M2 and M3. The edit ops and validator are built (`docs/edit-operations.md`). |
 | M5 | Editing agent | Programmatic edit episodes, then SFT, then multi-turn GRPO. Edit tools take flat scalar arguments such as room ids and enums. |
 | M6 | Retrieval as a `search_plans` tool | Hard filters on room counts and typed adjacencies, then Weisfeiler-Lehman ranking over a ResPlan pool. |
 
-Follow-ups to M1 that are not built yet: MSD and Swiss Dwellings converters, the zero-shot baseline run (its code is built, see `docs/evaluation.md`), any GPU or ClearML job, the backend and frontend, retrieval, and training scripts.
+Follow-ups to M1 that are not built yet: the zero-shot baseline run (its code is built, see `docs/evaluation.md`), any GPU or ClearML job, the backend and frontend, retrieval, and training scripts.
 
 ## Sources
 

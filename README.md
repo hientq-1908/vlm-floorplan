@@ -119,7 +119,7 @@ Design notes and the takedown procedure are in `docs/resplan.md`.
 | `src/vlm_floorplan/room_types.py` | The coarse room-type mapping for each dataset, including the Finnish label table. |
 | `src/vlm_floorplan/compact.py` | The compact JSON text form that the model reads and writes. |
 | `src/vlm_floorplan/record.py` | `PlanRecord`: a graph plus polygons, source labels and quality flags. |
-| `src/vlm_floorplan/converters/` | CubiCasa5K, MSD and Swiss Dwellings conversion to records, and the code they share (`assemble.py`, `adjacency.py`; the plan view is `resplan/frame.py`). |
+| `src/vlm_floorplan/converters/` | CubiCasa5K, MSD and Swiss Dwellings conversion to records, and the code they share (`assemble.py`, `adjacency.py`, `facing.py`; the plan view is `resplan/frame.py`). |
 | `src/vlm_floorplan/data/` | Fetch (range requests), build (JSONL) and JSONL helpers. |
 | `src/vlm_floorplan/resplan/` | ResPlan fetch, plan-to-graph converter, PNG renderer and build script. |
 | `src/vlm_floorplan/viewer/` | The overlay drawing and the contact sheet. |
