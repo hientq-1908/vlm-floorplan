@@ -106,6 +106,8 @@ Tolerated:
 - A `<think>` block, or only `</think>` (Qwen3.5's template pre-fills the opening tag).
 - Prose and markdown fences around the JSON.
 - Several JSON objects, where the last valid graph wins.
+- An abandoned, unfinished draft before the full answer.
+  After an unclosed object only whole graphs (with `floors`) count, so one finished floor of a truncated answer never passes as the whole plan.
 - The answer sitting in the reasoning field with an empty content field.
 - A tool call as XML text inside the reasoning (TRL issue 8050): the parameter bodies are searched for the graph.
 - A single floor without the `floors` wrapper, floors without numbers, and links written as objects instead of triples.
