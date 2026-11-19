@@ -2,7 +2,7 @@
 
     uv run --group ml python scripts/clearml_baseline.py launch --split SPLIT.jsonl --dry-run
     uv run --group ml python scripts/clearml_baseline.py launch --split SPLIT.jsonl --wait
-    uv run --group ml python scripts/clearml_baseline.py collect --task-id TASK_ID
+    uv run --group ml python scripts/clearml_baseline.py collect --task-id TASK_ID --run-name NAME
 
 Credentials are never read or written here. ClearML finds them in `~/clearml.conf` or
 in the `CLEARML_*` environment variables, both outside the repository.
