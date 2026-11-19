@@ -131,7 +131,7 @@ def test_unknown_connectivity_is_reported_and_not_linked() -> None:
 
 
 def test_a_node_that_is_not_a_room_class_is_an_error() -> None:
-    data = msd_pickle({0: (13, (0, 0, 3, 2))}, [])  # 13 = Structure, image-only
+    data = msd_pickle({0: (9, (0, 0, 3, 2))}, [])  # 9 = Structure, image-only
 
     with pytest.raises(ValueError, match="not a room class"):
         convert_plan(data, "1")

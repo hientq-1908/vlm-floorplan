@@ -108,11 +108,9 @@ def test_fetch_swiss_all_copies_the_whole_file_and_keeps_an_existing_one(tmp_pat
     source = _two_site_csv(tmp_path)
     with serve(_swiss_zip(source)) as (url, _state):
         path = fetch_swiss(tmp_path / "swiss", apartments=None, url=url)
+        assert path.read_bytes() == source.read_bytes()
         path.write_text("kept")
         assert fetch_swiss(tmp_path / "swiss", apartments=None, url=url).read_text() == "kept"
-
-    path.write_bytes(source.read_bytes())
-    assert [rows[0]["site_id"] for rows in iter_site_rows(path)] == ["s1", "s2", "s3"]
 
 
 def test_build_msd_writes_graph_only_records_and_reports_bad_plans(tmp_path: Path) -> None:
