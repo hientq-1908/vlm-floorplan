@@ -28,7 +28,7 @@ image --[perception model]--> FloorplanGraph --[edit tools + validator]--> Floor
 ## The graph schema
 
 The schema lives in `src/vlm_floorplan/schema.py`.
-It is the contract between every part of the project: converters, the viewer, the model's output parser, and later the edit tools.
+It is the contract between every part of the project: converters, the viewer, the model's output parser, and the edit tools (`docs/edit-operations.md`).
 
 ```text
 FloorplanGraph { floors: [Floor], image: {w, h} }
@@ -190,7 +190,7 @@ Thinking mode was chosen anyway, so the editing episodes need a short reasoning 
 | M1 | Schema, converters, overlay viewer, CPU format tests | This repository. The CubiCasa5K and ResPlan converters are built so far (ResPlan: `docs/resplan.md`). |
 | M2 | Zero-shot baseline, served through vLLM | One cheap ClearML job. Measures the base model at two image resolutions and checks that it uses the 0 to 1000 grid. |
 | M3 | Perception SFT | LoRA on the language model with the vision tower frozen, evaluated through vLLM with the adapter. |
-| M4 | App skeleton | Core library (edit ops, validator, renderer, metrics), FastAPI agent loop and a React Flow UI. It depends only on the schema, so it can run in parallel with M2 and M3. |
+| M4 | App skeleton | Core library (edit ops, validator, renderer, metrics), FastAPI agent loop and a React Flow UI. It depends only on the schema, so it can run in parallel with M2 and M3. The edit ops and validator are built (`docs/edit-operations.md`). |
 | M5 | Editing agent | Programmatic edit episodes, then SFT, then multi-turn GRPO. Edit tools take flat scalar arguments such as room ids and enums. |
 | M6 | Retrieval as a `search_plans` tool | Hard filters on room counts and typed adjacencies, then Weisfeiler-Lehman ranking over a ResPlan pool. |
 

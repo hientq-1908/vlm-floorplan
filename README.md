@@ -18,6 +18,7 @@ This repository currently holds milestone M1:
 - a fetch script and a build script for CubiCasa5K (`data/`),
 - a ResPlan converter, renderer and build script (`resplan/`),
 - an overlay viewer and an HTML contact sheet (`viewer/`),
+- typed graph edit operations, the graph validator and edit history (`edits/`, see `docs/edit-operations.md`),
 - tests, including a CPU check of the training format.
 
 Planned next: MSD and Swiss Dwellings converters, a zero-shot baseline, perception fine-tuning, the editing agent, the app and retrieval.
@@ -102,6 +103,7 @@ Design notes and the takedown procedure are in `docs/resplan.md`.
 | `src/vlm_floorplan/data/` | Fetch (range requests), build (JSONL) and JSONL helpers. |
 | `src/vlm_floorplan/resplan/` | ResPlan fetch, plan-to-graph converter, PNG renderer and build script. |
 | `src/vlm_floorplan/viewer/` | The overlay drawing and the contact sheet. |
+| `src/vlm_floorplan/edits/` | Typed edit ops, `apply_op`, the graph validator, tool schemas, text summaries and edit history. |
 | `tests/` | Unit tests on synthetic fixtures, plus the training-format tests. |
 
 ## Licenses and attribution
