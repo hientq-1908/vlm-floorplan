@@ -42,10 +42,10 @@ SERVER_START_TIMEOUT_S = 1800.0
 """Model download plus load can take a while on a cold machine."""
 SERVER_POLL_S = 5.0
 REQUEST_TIMEOUT_S = 1800.0
-# Context beyond the completion budget: a 1280 px plan image (about 1.2K tokens), the
-# prompt, and the chat template, with room to spare.
-PROMPT_CONTEXT_TOKENS = 8192
 """Thinking mode can generate for many minutes on one plan."""
+PROMPT_CONTEXT_TOKENS = 8192
+"""Context beyond the completion budget: a 1280 px plan image (about 1.2K tokens), the
+prompt, and the chat template, with room to spare."""
 SERVE_SCRIPT = Path(__file__).resolve().parents[3] / "deploy" / "vllm" / "serve.sh"
 
 
