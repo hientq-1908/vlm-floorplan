@@ -198,7 +198,7 @@ Thinking mode was chosen anyway, so the editing episodes need a short reasoning 
 | M5 | Editing agent | Programmatic edit episodes, then SFT, then multi-turn GRPO. Edit tools take flat scalar arguments such as room ids and enums. |
 | M6 | Retrieval as a `search_plans` tool | Hard filters on room counts and typed adjacencies, then Weisfeiler-Lehman ranking over a ResPlan pool. |
 
-Follow-ups to M1 that are not built yet: MSD and Swiss Dwellings converters, the zero-shot baseline, any GPU or ClearML job, the backend and frontend, retrieval, and training scripts.
+Follow-ups to M1 that are not built yet: MSD and Swiss Dwellings converters, the zero-shot baseline run (its code is built, see `docs/evaluation.md`), any GPU or ClearML job, the backend and frontend, retrieval, and training scripts.
 
 ## Sources
 

@@ -21,7 +21,10 @@ This repository currently holds milestone M1:
 - typed graph edit operations, the graph validator and edit history (`edits/`, see `docs/edit-operations.md`),
 - tests, including a CPU check of the training format.
 
-Planned next: MSD and Swiss Dwellings converters, a zero-shot baseline, perception fine-tuning, the editing agent, the app and retrieval.
+It also holds the code for milestone M2, the zero-shot baseline: evaluation metrics, a vLLM serving script and a ClearML job (`evaluation/`, `deploy/vllm/`, see `docs/evaluation.md`).
+The GPU run itself has not happened yet.
+
+Planned next: MSD and Swiss Dwellings converters, the zero-shot baseline run, perception fine-tuning, the editing agent, the app and retrieval.
 See the milestone list in `docs/architecture.md`.
 
 ## Quick start
@@ -104,6 +107,8 @@ Design notes and the takedown procedure are in `docs/resplan.md`.
 | `src/vlm_floorplan/resplan/` | ResPlan fetch, plan-to-graph converter, PNG renderer and build script. |
 | `src/vlm_floorplan/viewer/` | The overlay drawing and the contact sheet. |
 | `src/vlm_floorplan/edits/` | Typed edit ops, `apply_op`, the graph validator, tool schemas, text summaries and edit history. |
+| `src/vlm_floorplan/evaluation/` | The evaluation harness, parser and metrics, and the ClearML baseline launcher (`docs/evaluation.md`). |
+| `deploy/vllm/` | The vLLM serving script for the baseline job. |
 | `tests/` | Unit tests on synthetic fixtures, plus the training-format tests. |
 
 ## Licenses and attribution
