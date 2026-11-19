@@ -4,8 +4,13 @@ The converter and the renderer must agree exactly on how plan coordinates map to
 the image, or the graph's points would not land on the rooms they describe.
 Both therefore ask this module, and nothing else, for the mapping.
 
-ResPlan plan coordinates are in plan units (at most 256 across), with y pointing up,
-like a mathematical plot. Images have y pointing down, so the map flips y.
+The MSD and Swiss Dwellings converters use the same `PlanView` (through
+`for_geometries`), so plans from all three vector datasets are fitted the same
+way and a renderer draws any of them where its graph says the rooms are.
+
+Plan coordinates have y pointing up, like a mathematical plot: ResPlan's are in
+plan units (at most 256 across), MSD's and Swiss Dwellings' in metres.
+Images have y pointing down, so the map flips y.
 That also makes the rendered plan look like the plots in ResPlan's own README.
 """
 
@@ -65,19 +70,30 @@ class PlanView:
         margin: float = DEFAULT_MARGIN,
     ) -> PlanView:
         """Fit the building's bounding box plus a margin into an image with `long_side` pixels."""
-        bounds = [
-            geom.bounds
-            for layer in BUILDING_LAYERS
-            for geom in geometry_parts(plan.get(layer))
-            if not geom.is_empty
-        ]
-        if not bounds:
+        geometries = [geom for layer in BUILDING_LAYERS for geom in geometry_parts(plan.get(layer))]
+        if all(geom.is_empty for geom in geometries):
             raise ValueError("plan has no building geometry to view")
+        return cls.for_geometries(geometries, long_side, margin)
+
+    @classmethod
+    def for_geometries(
+        cls,
+        geometries: list[BaseGeometry],
+        long_side: int = DEFAULT_LONG_SIDE,
+        margin: float = DEFAULT_MARGIN,
+    ) -> PlanView:
+        """Fit the bounding box of `geometries` plus a margin into `long_side` pixels."""
+        bounds = [geom.bounds for geom in geometries if not geom.is_empty]
+        if not bounds:
+            raise ValueError("no geometry to fit a view around")
         x1 = min(b[0] for b in bounds)
         y1 = min(b[1] for b in bounds)
         x2 = max(b[2] for b in bounds)
         y2 = max(b[3] for b in bounds)
-        pad = margin * max(x2 - x1, y2 - y1)
+        extent = max(x2 - x1, y2 - y1)
+        if extent <= 0:
+            raise ValueError("geometry has no extent")
+        pad = margin * extent
         width, height = (x2 - x1) + 2 * pad, (y2 - y1) + 2 * pad
         scale = long_side / max(width, height)
         image = ImageSize(w=max(1, round(width * scale)), h=max(1, round(height * scale)))

@@ -54,7 +54,7 @@ class BuildReport:
         return "\n".join(lines)
 
 
-def _sample(items: list[T], options: BuildOptions) -> list[T]:
+def sample_items(items: list[T], options: BuildOptions) -> list[T]:
     """A seeded random subset of `items`, kept in the original order."""
     if options.limit is None or options.limit >= len(items):
         return items
@@ -88,7 +88,7 @@ def build_cubicasa(options: BuildOptions) -> BuildReport:
     output = options.out_dir / "cubicasa5k.jsonl"
     report = BuildReport(output=output)
     records: list[PlanRecord] = []
-    for plan_id in _sample(plan_ids, options):
+    for plan_id in sample_items(plan_ids, options):
         try:
             record = cubicasa.convert_plan(
                 root / plan_id, f"cubicasa5k/{plan_id}", splits.get(plan_id)

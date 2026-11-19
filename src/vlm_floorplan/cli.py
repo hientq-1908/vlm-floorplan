@@ -1,7 +1,9 @@
 """Command line: `uv run vlm-floorplan <fetch|build|view|sheet> ...`.
 
 fetch cubicasa --count 20          download 20 random CubiCasa5K plans
-build cubicasa --limit 50  convert fetched plans to JSONL
+fetch msd --count 50               download 50 random MSD plans (--all for all 4167)
+fetch swiss --apartments 100       download the first ~100 Swiss Dwellings apartments (--all)
+build cubicasa|msd|swiss --limit 50  convert fetched plans to JSONL
 view  data/processed/x.jsonl --id cubicasa5k/colorful/8759 --out plan.png
 sheet data/processed/x.jsonl --limit 24 --out-dir data/sheets/x
 """
@@ -10,19 +12,29 @@ from __future__ import annotations
 
 import argparse
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from itertools import islice
 from pathlib import Path
 
 from PIL import Image
 
-from vlm_floorplan.data.build import BuildOptions, build_cubicasa
+from vlm_floorplan.data.build import BuildOptions, BuildReport, build_cubicasa
+from vlm_floorplan.data.build_msd import build_msd
+from vlm_floorplan.data.build_swiss import build_swiss
 from vlm_floorplan.data.fetch import CubiCasaSelection, fetch_cubicasa
+from vlm_floorplan.data.fetch_msd import MsdSelection, fetch_msd
+from vlm_floorplan.data.fetch_swiss import fetch_swiss
 from vlm_floorplan.data.jsonl import image_path, read_records
 from vlm_floorplan.viewer.contact_sheet import write_contact_sheet
 from vlm_floorplan.viewer.overlay import draw_overlay
 
 DEFAULT_DATA_DIR = Path("data")
+
+_BUILDERS: dict[str, Callable[[BuildOptions], BuildReport]] = {
+    "cubicasa": build_cubicasa,
+    "msd": build_msd,
+    "swiss": build_swiss,
+}
 
 
 def _add_data_dir(parser: argparse.ArgumentParser) -> None:
@@ -50,8 +62,24 @@ def _build_parser() -> argparse.ArgumentParser:
         help="fetch this plan, e.g. colorful/8759 (repeatable)",
     )
 
+    msd = fetch_sources.add_parser("msd", help="MSD access graphs (CC BY 4.0), by range request")
+    _add_data_dir(msd)
+    msd.add_argument("--count", type=int, default=20)
+    msd.add_argument("--all", action="store_true", help="every plan (about 40 MB)")
+    msd.add_argument("--seed", type=int, default=0)
+    msd.add_argument(
+        "--plan", action="append", default=[], metavar="ID", help="e.g. 0 (repeatable)"
+    )
+
+    swiss = fetch_sources.add_parser(
+        "swiss", help="Swiss Dwellings geometries.csv (CC BY 4.0), first sites or all"
+    )
+    _add_data_dir(swiss)
+    swiss.add_argument("--apartments", type=int, default=50)
+    swiss.add_argument("--all", action="store_true", help="the whole file (about 290 MB download)")
+
     build = commands.add_parser("build", help="convert fetched plans to JSONL")
-    build.add_argument("source", choices=["cubicasa"])
+    build.add_argument("source", choices=sorted(_BUILDERS))
     _add_data_dir(build)
     build.add_argument("--out-dir", type=Path, default=DEFAULT_DATA_DIR / "processed")
     build.add_argument("--limit", type=int)
@@ -70,7 +98,7 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _run_fetch(args: argparse.Namespace) -> None:
+def _fetch_cubicasa(args: argparse.Namespace) -> None:
     selection = CubiCasaSelection(
         plan_ids=tuple(args.plan), count=args.count, split=args.split, seed=args.seed
     )
@@ -78,7 +106,31 @@ def _run_fetch(args: argparse.Namespace) -> None:
     print(f"CubiCasa5K: {count} plans in {args.data_dir / 'cubicasa5k'} (CC BY-NC 4.0)")
 
 
+def _fetch_msd(args: argparse.Namespace) -> None:
+    selection = MsdSelection(
+        plan_ids=tuple(args.plan), count=None if args.all else args.count, seed=args.seed
+    )
+    count = fetch_msd(args.data_dir / "msd", selection)
+    print(f"MSD: {count} plans in {args.data_dir / 'msd'} (CC BY 4.0)")
+
+
+def _fetch_swiss(args: argparse.Namespace) -> None:
+    path = fetch_swiss(
+        args.data_dir / "swiss_dwellings", apartments=None if args.all else args.apartments
+    )
+    print(f"Swiss Dwellings: {path} (CC BY 4.0)")
+
+
+_FETCHERS = {"cubicasa": _fetch_cubicasa, "msd": _fetch_msd, "swiss": _fetch_swiss}
+
+
+def _run_fetch(args: argparse.Namespace) -> None:
+    _FETCHERS[args.source](args)
+
+
 def _run_build(args: argparse.Namespace) -> None:
+    if args.split is not None and args.source != "cubicasa":
+        raise SystemExit(f"{args.source} has no train/val/test split to filter by")
     options = BuildOptions(
         data_dir=args.data_dir,
         out_dir=args.out_dir,
@@ -86,7 +138,7 @@ def _run_build(args: argparse.Namespace) -> None:
         split=args.split,
         seed=args.seed,
     )
-    print(build_cubicasa(options).summary())
+    print(_BUILDERS[args.source](options).summary())
 
 
 def _run_view(args: argparse.Namespace) -> None:
