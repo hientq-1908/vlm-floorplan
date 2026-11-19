@@ -105,6 +105,7 @@ def test_move_room_changes_only_the_point() -> None:
     graph = sample_graph()
     result = applied(graph, MoveRoom(room_id="r2", x=10, y=20))
     assert room(result.graph, "r2").xy == (10, 20)
+    assert "bbox" not in result.description
     assert result.graph.floors[0].links == graph.floors[0].links
 
 
@@ -119,9 +120,11 @@ def test_move_room_drops_the_box() -> None:
     ]
     boxed_floor = Floor(floor=floor1.floor, rooms=rooms, links=floor1.links)
     graph = FloorplanGraph(floors=[boxed_floor, *base.floors[1:]], image=base.image)
-    moved = room(applied(graph, MoveRoom(room_id="r1", x=1000, y=1000)).graph, "r1")
+    result = applied(graph, MoveRoom(room_id="r1", x=1000, y=1000))
+    moved = room(result.graph, "r1")
     assert moved.xy == (1000, 1000)
     assert moved.bbox is None
+    assert result.description == "moved r1 from (400, 500) to (1000,1000) and dropped its bbox"
 
 
 def test_move_room_to_the_same_place_is_no_change() -> None:

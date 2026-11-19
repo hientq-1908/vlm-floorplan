@@ -22,7 +22,7 @@ That makes undo cheap (keep the old graph) and makes replays trivially safe.
 | Op | Arguments | Notes |
 |----|-----------|-------|
 | `add_room` | `type`, `x`, `y`, optional `label`, `floor`, `entrance` | The id is assigned (next free number). The new room has no links and no bbox. |
-| `move_room` | `room_id`, `x`, `y` | Changes only the point, and drops the room's bbox if it had one. |
+| `move_room` | `room_id`, `x`, `y` | Changes only the point, and drops the room's bbox if it had one (the description says so). |
 | `delete_room` | `room_id` | Drops every link that touches the room. |
 | `set_room_type` | `room_id`, `type` | |
 | `set_room_label` | `room_id`, `label` | An empty label removes the name. |
