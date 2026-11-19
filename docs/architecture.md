@@ -28,7 +28,7 @@ image --[perception model]--> FloorplanGraph --[edit tools + validator]--> Floor
 ## The graph schema
 
 The schema lives in `src/vlm_floorplan/schema.py`.
-It is the contract between every part of the project: converters, the viewer, the model's output parser, and later the edit tools.
+It is the contract between every part of the project: converters, the viewer, the model's output parser, and the edit tools (`docs/edit-operations.md`).
 
 ```text
 FloorplanGraph { floors: [Floor], image: {w, h} }
@@ -54,6 +54,8 @@ That is why `PlanRecord` keeps the room polygons even though the model only outp
 **`bbox` is optional.**
 It costs about 12 tokens per room and helps the grounding metric and the UI.
 The compact serializer writes it whenever a room has one.
+Amended 2026-11-19: the bbox is being retired, and rooms will become points only.
+Until the follow-up schema change lands, `bbox` stays optional in the schema, and edits do not maintain it (`docs/edit-operations.md`).
 
 **Links have three kinds: `door`, `opening` and `wall`.**
 `door` and `opening` are both needed because open-plan areas are common: a kitchen, dining area and living room are often separate polygons with no wall between them.
@@ -174,6 +176,8 @@ Thinking mode was chosen anyway, so the editing episodes need a short reasoning 
    Real images exist only in CubiCasa5K.
    The others are vectors, so their images are renders, which are augmentation and not a substitute for real plans.
 2. **Schema.** Keep wall links, an entrance flag, outdoor spaces as rooms, per-floor graphs, and a point plus an optional bbox per room.
+   Amended 2026-11-19: retire the bbox, so rooms become points only.
+   Until the follow-up schema change lands, `bbox` stays optional in the schema and edits do not maintain it.
 3. **Scope.** Retrieval is a later tool (M6) over a ResPlan pool.
    "Draw a new one" means composing a graph with the same edit tools, from an empty graph.
    Geometric generation is out of scope: it is a different research problem, and it contradicts the rule that geometry is not edited.
@@ -190,7 +194,7 @@ Thinking mode was chosen anyway, so the editing episodes need a short reasoning 
 | M1 | Schema, converters, overlay viewer, CPU format tests | This repository. The CubiCasa5K and ResPlan converters are built so far (ResPlan: `docs/resplan.md`). |
 | M2 | Zero-shot baseline, served through vLLM | One cheap ClearML job. Measures the base model at two image resolutions and checks that it uses the 0 to 1000 grid. |
 | M3 | Perception SFT | LoRA on the language model with the vision tower frozen, evaluated through vLLM with the adapter. |
-| M4 | App skeleton | Core library (edit ops, validator, renderer, metrics), FastAPI agent loop and a React Flow UI. It depends only on the schema, so it can run in parallel with M2 and M3. |
+| M4 | App skeleton | Core library (edit ops, validator, renderer, metrics), FastAPI agent loop and a React Flow UI. It depends only on the schema, so it can run in parallel with M2 and M3. The edit ops and validator are built (`docs/edit-operations.md`). |
 | M5 | Editing agent | Programmatic edit episodes, then SFT, then multi-turn GRPO. Edit tools take flat scalar arguments such as room ids and enums. |
 | M6 | Retrieval as a `search_plans` tool | Hard filters on room counts and typed adjacencies, then Weisfeiler-Lehman ranking over a ResPlan pool. |
 
