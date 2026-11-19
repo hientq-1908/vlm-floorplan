@@ -5,7 +5,7 @@
 The download is pinned to one commit of the upstream repository and the zip is
 checked against a SHA-256, so every run gets the same bytes and a force-pushed
 or tampered file is rejected. To move to a newer release, update `COMMIT` and
-`ZIP_SHA256` together (see "Takedowns" in docs/resplan.md).
+`ZIP_SHA256` together (see "Reproducible downloads" in docs/resplan.md).
 
 ResPlan: https://github.com/m-agour/ResPlan (data CC BY 4.0, code MIT).
 """
