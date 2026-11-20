@@ -36,7 +36,8 @@ REJECTION_PENALTY = 0.05
 def plan_score(final: FloorplanGraph | None, target: PlanRecord) -> float:
     """0 to 1: how much of the real plan the final plan has, and nothing else.
 
-    The mean of four scores, each skipped when the target gives it nothing to measure:
+    The mean of four scores, each skipped when neither the target nor the final plan
+    gives it anything to measure:
     room F1, room-type accuracy among matched rooms, link F1 where a link only counts
     when its kind (door, opening, wall) is right too, and exterior-door F1.
     """
@@ -59,8 +60,8 @@ def plan_score(final: FloorplanGraph | None, target: PlanRecord) -> float:
 
 
 def _target_f1(counts: PrfCounts) -> float | None:
-    """F1, None only when the target has nothing to find; missing every real item scores 0."""
-    if counts.tp + counts.fn == 0:
+    """F1, None only when neither plan has an item; a missed or spurious-only side scores 0."""
+    if counts.tp + counts.fp + counts.fn == 0:
         return None
     return counts.f1 or 0.0
 

@@ -12,6 +12,7 @@ from vlm_floorplan.agent import (
 )
 from vlm_floorplan.agent.env import REJECTION_PENALTY, plan_score
 from vlm_floorplan.agent.sample_plan import sample_record
+from vlm_floorplan.schema import FloorplanGraph
 
 RECORD = sample_record()
 ALL_TASKS = [
@@ -86,23 +87,38 @@ def test_skipping_the_exterior_door_call_scores_below_full_reward() -> None:
     assert env.reward() < 1.0
 
 
-def test_a_plan_with_the_right_rooms_but_no_links_or_entrance_scores_below_full() -> None:
-    bare = RECORD.graph.model_copy(
+def without_entrances(graph: FloorplanGraph, *, keep_links: bool = True) -> FloorplanGraph:
+    return graph.model_copy(
         update={
             "floors": [
                 floor.model_copy(
                     update={
-                        "links": [],
+                        "links": floor.links if keep_links else [],
                         "rooms": [
                             room.model_copy(update={"entrance": False}) for room in floor.rooms
                         ],
                     }
                 )
-                for floor in RECORD.graph.floors
+                for floor in graph.floors
             ]
         }
     )
+
+
+def test_a_plan_with_the_right_rooms_but_no_links_or_entrance_scores_below_full() -> None:
+    bare = without_entrances(RECORD.graph, keep_links=False)
     assert plan_score(bare, RECORD) == pytest.approx(0.5)
+
+
+def test_a_spurious_exterior_door_on_an_entrance_free_target_costs_reward() -> None:
+    target = RECORD.model_copy(update={"graph": without_entrances(RECORD.graph)})
+    env = FloorplanEditEnv()
+    env.reset(target, CloseDoorTask("r0", "r3", target.graph.floors[0].links[2].kind))
+    solve(env)
+    assert env.reward() == pytest.approx(1.0)
+    env.step("add_exterior_door", {"room_id": "r0"})
+    assert env.rejected_calls == 0
+    assert env.reward() == pytest.approx(0.75)
 
 
 def test_a_refused_call_changes_nothing_and_costs_the_penalty() -> None:

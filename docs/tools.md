@@ -23,7 +23,7 @@ There are eleven tools: the ten edit tools, plus `new_plan` for drawing a whole 
 | `remove_exterior_door` | `room_id` | Removes that mark. |
 | `new_plan` | `plan` | Replaces the whole plan with a new one, given as compact JSON in one string. |
 
-Every argument is a flat scalar: a string, an integer or a boolean.
+Every argument is a flat scalar: a string or an integer.
 `new_plan` takes the plan as a string on purpose.
 It is the one place a nested structure would otherwise be needed, and compact JSON (`compact.py`) is already the text the perception model writes, so one format serves both.
 The ten edit tools stay available after `new_plan`, for every later change.
@@ -132,7 +132,7 @@ env.solution()  # scripted ToolCalls that repair the plan
 - `step(tool, arguments)` plays the call through `call_tool`, which uses `apply_tool_call` for the edit tools, and returns the tool response text.
   A refused call changes nothing and is counted.
 - `reward()` is `plan_score(current plan, target)` minus `0.05` per refused call.
-  `plan_score` is the mean of four scores from `evaluate_plan`, each skipped only when the target has nothing to measure (a target item the plan misses entirely scores 0, not skipped): room F1, room-type accuracy among matched rooms, link F1 where the kind must be right too, and exterior-door F1.
+  `plan_score` is the mean of four scores from `evaluate_plan`, each skipped only when neither the target nor the plan has anything to measure (a component where the plan misses every real item, or has only spurious ones, scores 0): room F1, room-type accuracy among matched rooms, link F1 where the kind must be right too, and exterior-door F1.
   Rooms are matched by position (a point inside the real room's polygon), so a re-added room does not need its old id.
 - `solution()` returns the scripted inverse edit as `ToolCall(name, arguments, reasoning)` values.
 
