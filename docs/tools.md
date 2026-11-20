@@ -121,10 +121,10 @@ The idea is to damage a real plan, ask for the repair, and let the real plan be 
 
 ```python
 env = FloorplanEditEnv()
-prompt = env.reset(record, DeleteRoomTask("r5"))   # user message: damaged plan + request
-text = env.step("add_room", {"type": "storage", "x": 850, "y": 850})   # tool response text
-env.reward()                                        # plan_score(final, target) - penalties
-env.solution()                                      # scripted ToolCalls that repair the plan
+prompt = env.reset(record, DeleteRoomTask("r5"))  # user message: damaged plan + request
+text = env.step("add_room", {"type": "storage", "x": 850, "y": 850})  # tool response text
+env.reward()  # plan_score(final, target) - penalties
+env.solution()  # scripted ToolCalls that repair the plan
 ```
 
 - `reset(record, task)` damages `record.graph` with the task and returns the user message: `summarize_graph` of the damaged plan, then the request.
@@ -194,6 +194,7 @@ Without `--records` it uses the built-in sample plan, so it also runs with no da
 
 - **SFT data.**
   `build_episode(record, task)` plays `solution()` through `step()` and records the conversation.
+  It raises `ValueError` if the environment refuses a scripted call, so no episode teaches a repair that fails.
   The episodes train the tool-calling behaviour: reading the plan, writing short reasoning, one call per turn, reading the response.
   Only the assistant turns are trained on; the user turn and the tool responses are masked by `assistant_only_loss`.
 - **Rollouts.**
@@ -213,4 +214,4 @@ Without `--records` it uses the built-in sample plan, so it also runs with no da
   The floorplan image is not attached yet, so the model reads the plan from `summarize_graph`.
 - The rendered view and the tool schemas were checked against the Qwen3.5-4B chat template.
   The call format was not run against a live vLLM server here.
-- `delete_room` needs a room with at least one link, and `draw_plan` is limited to plans of twelve rooms or fewer, because it copies the whole plan into one call.
+- `delete_room` needs a room with at least one link, a known type and a label short enough for `add_room`, and `draw_plan` is limited to plans of twelve rooms or fewer, because it copies the whole plan into one call.
