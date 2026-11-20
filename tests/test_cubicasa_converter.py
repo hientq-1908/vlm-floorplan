@@ -37,10 +37,9 @@ def test_points_are_normalized_to_the_scaled_image_and_inside_their_rooms(
 ) -> None:
     assert cubicasa_record.graph.image == ImageSize(w=WIDTH, h=HEIGHT)
     kitchen = _by_type(cubicasa_record)["kitchen"]
-    x1, y1, x2, y2 = kitchen.bbox or (0, 0, 0, 0)
-    # kitchen spans x 20-290 and y 20-200 of a 600 x 400 image
-    assert (x1, y1, x2, y2) == (33, 50, 483, 500)
-    assert x1 <= kitchen.xy[0] <= x2 and y1 <= kitchen.xy[1] <= y2
+    # kitchen spans x 20-290 and y 20-200 of a 600 x 400 image: (33, 50) to (483, 500) on the grid
+    x, y = kitchen.xy
+    assert 33 <= x <= 483 and 50 <= y <= 500
 
 
 def test_kitchen_and_living_room_are_joined_by_a_door(cubicasa_record: PlanRecord) -> None:
@@ -95,7 +94,6 @@ def test_doors_whose_parent_is_not_a_wall_are_ignored(cubicasa_record: PlanRecor
 
 def test_invalid_polygon_is_repaired_to_its_largest_part(cubicasa_record: PlanRecord) -> None:
     storage = _by_type(cubicasa_record)["storage"]
-    assert storage.bbox is not None
     assert any("repaired invalid Space Storage" in w for w in cubicasa_record.quality.warnings)
     assert cubicasa_record.rooms[storage.id].polygon, "the repaired outline is kept"
 

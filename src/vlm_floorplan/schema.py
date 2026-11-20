@@ -78,22 +78,8 @@ class Room(BaseModel):
     label: str | None = None
     """The room's name as printed on the plan, if any (often a Finnish abbreviation)."""
     xy: tuple[GridCoord, GridCoord]
-    bbox: tuple[GridCoord, GridCoord, GridCoord, GridCoord] | None = None
-    """Optional axis-aligned box (x1, y1, x2, y2)."""
     entrance: bool = False
     """True when an exterior door opens into this room."""
-
-    @model_validator(mode="after")
-    def _check_bbox(self) -> Room:
-        if self.bbox is None:
-            return self
-        x1, y1, x2, y2 = self.bbox
-        if x1 > x2 or y1 > y2:
-            raise ValueError(f"room {self.id}: bbox {self.bbox} must satisfy x1<=x2 and y1<=y2")
-        x, y = self.xy
-        if not (x1 <= x <= x2 and y1 <= y <= y2):
-            raise ValueError(f"room {self.id}: point {self.xy} lies outside its bbox {self.bbox}")
-        return self
 
 
 class Link(BaseModel):

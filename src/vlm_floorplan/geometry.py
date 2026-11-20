@@ -4,7 +4,7 @@ Converters work in two coordinate spaces:
 
 1. Source space (CubiCasa5K SVG pixels, ResPlan plan units), where the
    connectivity heuristics run, because their thresholds are in those units.
-2. Grid space: 0-1000 over the image, where the graph's points and boxes live.
+2. Grid space: 0-1000 over the image, where the graph's points live.
 
 `GridFrame` is the affine map from the first to the second.
 """
@@ -81,11 +81,6 @@ class GridFrame:
         """
         p = self.apply(geom).representative_point()
         return _clamp(p.x), _clamp(p.y)
-
-    def bbox(self, geom: BaseGeometry) -> tuple[int, int, int, int]:
-        """Grid bounding box (x1, y1, x2, y2) of a geometry."""
-        x1, y1, x2, y2 = self.apply(geom).bounds
-        return _clamp(x1), _clamp(y1), _clamp(x2), _clamp(y2)
 
     def rings(self, geom: BaseGeometry, decimals: int = 1) -> list[Ring]:
         """Exterior rings of each polygon part, in grid space, rounded.

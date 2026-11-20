@@ -33,7 +33,7 @@ It is the contract between every part of the project: converters, the viewer, th
 ```text
 FloorplanGraph { floors: [Floor], image: {w, h} }
 Floor          { floor: int, rooms: [Room], links: [Link] }
-Room           { id: "r<n>", type, label?, xy: [x, y], bbox?, entrance? }
+Room           { id: "r<n>", type, label?, xy: [x, y], entrance? }
 Link           { a: room id, b: room id, kind: door | opening | wall }
 ```
 
@@ -51,11 +51,14 @@ The converters use shapely's `representative_point()`, which always lies inside 
 This also gives a simple evaluation rule: a predicted room matches the ground-truth room whose polygon contains the predicted point, with no matching heuristic.
 That is why `PlanRecord` keeps the room polygons even though the model only outputs points.
 
-**`bbox` is optional.**
-It costs about 12 tokens per room and helps the grounding metric and the UI.
-The compact serializer writes it whenever a room has one.
-Amended 2026-11-19: the bbox is being retired, and rooms will become points only.
-Until the follow-up schema change lands, `bbox` stays optional in the schema, and edits do not maintain it (`docs/edit-operations.md`).
+**Rooms are points only, with no bbox.**
+The graph is what the user edits, by chat or by dragging a room, and a drag moves one point.
+A box beside the point would be a second position that every edit must keep in sync, and syncing it at the grid edge silently changes it.
+It also cost about 12 tokens per room in every training target, and the grounding metric needs only the point (it matches a point to the ground-truth polygon, `docs/evaluation.md`).
+The captain decided on 2026-11-19 to remove it entirely: the schema, the compact format, the converters, the viewer and the edit ops no longer have a box.
+Room polygons stay in `PlanRecord` for evaluation, but they are not part of the graph.
+A record that still carries a `bbox` field is rejected, not silently stripped: `Room` forbids unknown fields, so loading it raises a validation error.
+Such a record was built before this change and its training targets would not match the current format, so it must be rebuilt from the source dataset.
 
 **Links have three kinds: `door`, `opening` and `wall`.**
 `door` and `opening` are both needed because open-plan areas are common: a kitchen, dining area and living room are often separate polygons with no wall between them.
@@ -75,7 +78,7 @@ The data has no stairs links between floors, so the schema does not invent them.
 Room ids (`r0`, `r1`, ...) are unique across the whole plan so that "r7" is unambiguous in a chat edit.
 
 **Validators enforce the contract.**
-A graph is rejected for duplicate ids, links to rooms that do not exist or sit on another floor, self links, duplicate links, coordinates outside 0 to 1000, and a point outside its own bbox.
+A graph is rejected for duplicate ids, links to rooms that do not exist or sit on another floor, self links, duplicate links, and coordinates outside 0 to 1000.
 Because the model output is parsed through the same validators, text that parses is a structurally valid graph.
 This idea comes from paperbanana's `DiagramIR`, which validates references in the same way.
 
@@ -175,9 +178,8 @@ Thinking mode was chosen anyway, so the editing episodes need a short reasoning 
    The whole project is non-commercial, so the CC BY-NC data of CubiCasa5K is fine.
    Real images exist only in CubiCasa5K.
    The others are vectors, so their images are renders, which are augmentation and not a substitute for real plans.
-2. **Schema.** Keep wall links, an entrance flag, outdoor spaces as rooms, per-floor graphs, and a point plus an optional bbox per room.
-   Amended 2026-11-19: retire the bbox, so rooms become points only.
-   Until the follow-up schema change lands, `bbox` stays optional in the schema and edits do not maintain it.
+2. **Schema.** Keep wall links, an entrance flag, outdoor spaces as rooms, per-floor graphs, and a point per room.
+   Amended 2026-11-19: the earlier plan of an optional bbox per room was dropped, so rooms are points only.
 3. **Scope.** Retrieval is a later tool (M6) over a ResPlan pool.
    "Draw a new one" means composing a graph with the same edit tools, from an empty graph.
    Geometric generation is out of scope: it is a different research problem, and it contradicts the rule that geometry is not edited.

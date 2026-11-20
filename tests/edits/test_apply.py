@@ -15,7 +15,7 @@ from vlm_floorplan.edits import (
     SetRoomType,
     validate_graph,
 )
-from vlm_floorplan.schema import Floor, FloorplanGraph, Room, RoomType
+from vlm_floorplan.schema import FloorplanGraph, Room, RoomType
 
 from .helpers import applied, link_kinds, rejected, sample_graph
 
@@ -74,10 +74,9 @@ def test_add_room_with_an_id_in_use_is_rejected() -> None:
     assert rejected(sample_graph(), op).error.code == EditErrorCode.ID_IN_USE
 
 
-def test_add_room_keeps_the_entrance_and_has_no_box() -> None:
+def test_add_room_keeps_the_entrance() -> None:
     op = AddRoom(type="entry", x=50, y=50, floor=1, entrance=True)
     new = room(applied(sample_graph(), op).graph, "r7")
-    assert new.bbox is None
     assert new.entrance
 
 
@@ -105,26 +104,15 @@ def test_move_room_changes_only_the_point() -> None:
     graph = sample_graph()
     result = applied(graph, MoveRoom(room_id="r2", x=10, y=20))
     assert room(result.graph, "r2").xy == (10, 20)
-    assert "bbox" not in result.description
     assert result.graph.floors[0].links == graph.floors[0].links
 
 
-def test_move_room_drops_the_box() -> None:
-    base = sample_graph()
-    floor1 = base.floors[0]
-    rooms = [
-        Room(id="r1", type=RoomType.LIVING, xy=(400, 500), bbox=(300, 400, 500, 600))
-        if r.id == "r1"
-        else r
-        for r in floor1.rooms
-    ]
-    boxed_floor = Floor(floor=floor1.floor, rooms=rooms, links=floor1.links)
-    graph = FloorplanGraph(floors=[boxed_floor, *base.floors[1:]], image=base.image)
+def test_move_room_describes_the_move_by_its_points() -> None:
+    graph = sample_graph()
+    start = room(graph, "r1").xy
     result = applied(graph, MoveRoom(room_id="r1", x=1000, y=1000))
-    moved = room(result.graph, "r1")
-    assert moved.xy == (1000, 1000)
-    assert moved.bbox is None
-    assert result.description == "moved r1 from (400, 500) to (1000, 1000) and dropped its bbox"
+    assert room(result.graph, "r1").xy == (1000, 1000)
+    assert result.description == f"moved r1 from {start} to (1000, 1000)"
 
 
 def test_move_room_to_the_same_place_is_no_change() -> None:
@@ -309,9 +297,7 @@ def test_a_handler_bug_is_caught_by_the_validator_and_refused(monkeypatch) -> No
     graph = sample_graph()
 
     def broken_handler(graph: FloorplanGraph, op: MoveRoom) -> Change:
-        bad = Room.model_construct(
-            id="r2", type=RoomType.KITCHEN, xy=(5000, 5), bbox=None, entrance=False
-        )
+        bad = Room.model_construct(id="r2", type=RoomType.KITCHEN, xy=(5000, 5), entrance=False)
         floor = graph.floors[0].model_copy(update={"rooms": [*graph.floors[0].rooms[:2], bad]})
         return Change(graph.model_copy(update={"floors": [floor, graph.floors[1]]}), op, "broken")
 

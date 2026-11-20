@@ -17,8 +17,7 @@ Design notes:
   so they say what the op does and when to use it, not how it is implemented.
 - Ops are frozen. Op-local rules (a coordinate is on the grid) are checked here;
   rules that need the graph (does the room exist?) are checked when the op is applied.
-- Ops never set or maintain a room's bbox: the bbox is being retired from the schema,
-  so a room is placed by its point alone.
+- A room is a point, so ops place a room by its point alone.
 """
 
 from __future__ import annotations

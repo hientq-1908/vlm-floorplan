@@ -11,7 +11,7 @@ from vlm_floorplan.schema import Floor, FloorplanGraph, ImageSize, Link, Room
 def sample_graph() -> FloorplanGraph:
     rooms = [
         Room(id="r0", type="entry", xy=(474, 735), entrance=True),
-        Room(id="r1", type="living", xy=(583, 295), label="KÄYTÄVÄ", bbox=(400, 100, 900, 500)),
+        Room(id="r1", type="living", xy=(583, 295), label="KÄYTÄVÄ"),
     ]
     second = Floor(floor=2, rooms=[Room(id="r2", type="bedroom", xy=(10, 20))])
     first = Floor(floor=1, rooms=rooms, links=[Link(a="r0", b="r1", kind="door")])
@@ -31,6 +31,20 @@ def test_compact_form_is_minimal() -> None:
     assert "entrance" not in data["floors"][0]["rooms"][1]  # defaults are omitted
     assert data["floors"][0]["rooms"][0]["entrance"] is True
     assert "KÄYTÄVÄ" in text  # not escaped to Ä
+
+
+def test_a_room_is_written_as_a_point_without_a_box() -> None:
+    rooms = json.loads(to_compact(sample_graph()))["floors"][0]["rooms"]
+    assert set(rooms[1]) == {"id", "type", "label", "xy"}
+
+
+def test_a_compact_room_with_a_bbox_is_rejected() -> None:
+    old = (
+        '{"floors":[{"floor":1,"rooms":[{"id":"r0","type":"living","xy":[5,5],'
+        '"bbox":[0,0,10,10]}],"links":[]}]}'
+    )
+    with pytest.raises(ValueError, match="bbox"):
+        from_compact(old, ImageSize(w=640, h=480))
 
 
 @pytest.mark.parametrize(

@@ -81,10 +81,8 @@ def move_room(graph: FloorplanGraph, op: MoveRoom) -> Change | EditError:
     floor_index, room = found
     if room.xy == (op.x, op.y):
         return no_change(f"Room {room.id} is already at ({op.x}, {op.y}).", room.id)
-    new_graph = swap_room(graph, floor_index, rebuilt_room(room, xy=(op.x, op.y), bbox=None))
+    new_graph = swap_room(graph, floor_index, rebuilt_room(room, xy=(op.x, op.y)))
     description = f"moved {room.id} from ({room.xy[0]}, {room.xy[1]}) to ({op.x}, {op.y})"
-    if room.bbox is not None:
-        description += " and dropped its bbox"
     return Change(new_graph, op, description)
 
 

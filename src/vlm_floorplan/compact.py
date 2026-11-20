@@ -4,7 +4,7 @@ Every token the model emits costs time, so the training target drops what it can
 
 - no whitespace,
 - links as `[a, b, kind]` triples instead of objects,
-- optional room fields (`label`, `bbox`, `entrance`) only when set,
+- optional room fields (`label`, `entrance`) only when set,
 - no image size (grid coordinates do not depend on it).
 
 Example (one floor, two rooms, one door):
@@ -31,8 +31,6 @@ def _room_to_compact(room: Room) -> dict[str, Any]:
     if room.label is not None:
         item["label"] = room.label
     item["xy"] = list(room.xy)
-    if room.bbox is not None:
-        item["bbox"] = list(room.bbox)
     if room.entrance:
         item["entrance"] = True
     return item
