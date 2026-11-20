@@ -71,7 +71,7 @@ def choose_cubicasa_ids(archive: zipfile.ZipFile, selection: CubiCasaSelection) 
     return sorted(random.Random(selection.seed).sample(pool, min(selection.count, len(pool))))
 
 
-def _extract(archive: zipfile.ZipFile, member: str, target: Path) -> bool:
+def extract_member(archive: zipfile.ZipFile, member: str, target: Path) -> bool:
     """Copy one zip member to `target` unless it is already there. True if downloaded."""
     if target.exists():
         return False
@@ -91,9 +91,9 @@ def fetch_cubicasa(out_dir: Path, selection: CubiCasaSelection, url: str = CUBIC
     """
     with zipfile.ZipFile(HttpRangeFile(url)) as archive:
         for split in CUBICASA_SPLITS:
-            _extract(archive, f"cubicasa5k/{split}.txt", out_dir / f"{split}.txt")
+            extract_member(archive, f"cubicasa5k/{split}.txt", out_dir / f"{split}.txt")
         ids = choose_cubicasa_ids(archive, selection)
         for plan_id in ids:
             for name in CUBICASA_FILES:
-                _extract(archive, f"cubicasa5k/{plan_id}/{name}", out_dir / plan_id / name)
+                extract_member(archive, f"cubicasa5k/{plan_id}/{name}", out_dir / plan_id / name)
     return len(ids)

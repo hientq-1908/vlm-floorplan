@@ -1,0 +1,100 @@
+"""Derive opening and wall links from room geometry alone.
+
+MSD and Swiss Dwellings say where the doors are, but neither says which rooms
+merely touch. The schema's `wall` link ("adjacent, but a wall separates them")
+and `opening` link ("no wall between them") are recovered here from how close
+two room polygons are:
+
+- gap <= `opening_gap`: the polygons touch, so nothing separates them: `opening`.
+- gap <= `wall_gap`: a wall-thickness apart: `wall`.
+- either way the rooms must run alongside each other for at least `min_shared`
+  metres. A pair that nearly touches at a corner but also runs alongside a wall
+  still gets its `wall` link: the corner does not hide it.
+
+"Alongside" is the length of one room's outline that faces the other straight
+across the gap (`facing.facing_length`), the measure the CubiCasa5K converter
+uses too, so the three converters link rooms by one rule.
+Rooms that meet only at a corner face each other along nothing, rooms whose
+corners overlap by 10 cm face each other along 10 cm, and a room that reaches
+another twice counts only the two stretches, not the space between them.
+
+A pair exactly `wall_gap` apart still counts: both gaps are widened by
+`EDGE_TOLERANCE` before measuring, so float rounding, the zero-area contact at
+the far edge of the gap, and an empty strip between the rooms do not drop it.
+
+With a wall layer, the strip between the rooms (the area outside both that lies
+within half the wall gap of each) also tells how much of the gap is wall.
+
+Doors are linked first by the converters, and `SourceFloor.link` keeps the
+strongest link per pair, so a pair with a door stays a `door` link.
+Thresholds are in plan metres; both datasets use metres.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from itertools import combinations
+
+from shapely.geometry.base import BaseGeometry
+
+from vlm_floorplan.converters.assemble import SourceFloor
+from vlm_floorplan.converters.facing import facing_length
+from vlm_floorplan.schema import LinkKind
+
+
+@dataclass(frozen=True)
+class AdjacencyRules:
+    """Distances, in metres, that decide how two nearby rooms are linked."""
+
+    opening_gap: float | None
+    """Closest distance still counted as "no wall"; None turns opening detection off."""
+    wall_gap: float
+    """Largest gap that still counts as one wall between two rooms."""
+    min_shared: float
+    """Length over which the two rooms must run alongside each other, at least."""
+    min_wall_cover: float = 0.0
+    """With a wall layer: share of the gap strip that must be wall (0 disables the check)."""
+
+
+EDGE_TOLERANCE = 1e-3
+"""Metres added to a gap, so rooms exactly that far apart still count as within it."""
+
+
+def _strip_between(a: BaseGeometry, b: BaseGeometry, gap: float) -> BaseGeometry:
+    """The area outside both rooms that lies within half of `gap` of each."""
+    half = gap / 2
+    return a.buffer(half).intersection(b.buffer(half)).difference(a.union(b))
+
+
+def _wall_cover(strip: BaseGeometry, walls: BaseGeometry) -> float:
+    """Share of the strip between two rooms that is covered by wall."""
+    if strip.area == 0:
+        return 0.0
+    return strip.intersection(walls).area / strip.area
+
+
+def link_adjacent_rooms(
+    floor: SourceFloor, rules: AdjacencyRules, walls: BaseGeometry | None = None
+) -> None:
+    """Add `opening` and `wall` links between rooms of one floor, in place."""
+    wall_gap = rules.wall_gap + EDGE_TOLERANCE
+    opening_gap = None if rules.opening_gap is None else rules.opening_gap + EDGE_TOLERANCE
+    for i, j in combinations(range(len(floor.rooms)), 2):
+        a, b = floor.rooms[i].geometry, floor.rooms[j].geometry
+        distance = a.distance(b)
+        if distance > wall_gap:
+            continue
+        if (
+            opening_gap is not None
+            and distance <= opening_gap
+            and facing_length(a, b, opening_gap) >= rules.min_shared
+        ):
+            floor.link(i, j, LinkKind.OPENING)
+            continue
+        if facing_length(a, b, wall_gap) < rules.min_shared:
+            continue
+        if walls is not None:
+            strip = _strip_between(a, b, wall_gap)
+            if _wall_cover(strip, walls) < rules.min_wall_cover:
+                continue
+        floor.link(i, j, LinkKind.WALL)

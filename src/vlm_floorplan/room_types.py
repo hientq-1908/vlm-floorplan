@@ -165,8 +165,10 @@ RESPLAN_TYPES: dict[str, RoomType] = {
     "stair": T.STAIRS,
 }
 
-# MSD (Modified Swiss Dwellings) room types. The ResPlan and MSD converters are
-# being built in parallel tasks on this schema and consume these tables.
+# MSD (Modified Swiss Dwellings) room types, by the name MSD's own code uses
+# (ROOM_NAMES in cvaad-workshop/iccv23-challenge/constants.py).
+# MSD already folded the finer Swiss Dwellings labels into these 9 (ROOM and KITCHEN_DINING
+# lost their identity there), so the coarse mapping below cannot recover them.
 MSD_TYPES: dict[str, RoomType] = {
     "Bedroom": T.BEDROOM,
     "Livingroom": T.LIVING,
@@ -178,3 +180,93 @@ MSD_TYPES: dict[str, RoomType] = {
     "Bathroom": T.BATHROOM,
     "Balcony": T.OUTDOOR,
 }
+
+# The graph pickles store `room_type` as an index into ROOM_NAMES, not as a name.
+# Indices 9-12 (Structure, Door, Entrance Door, Window) are image-only classes that
+# never appear on a graph node.
+MSD_ROOM_NAMES: tuple[str, ...] = tuple(MSD_TYPES)
+
+# Swiss Dwellings `entity_subtype` values of `area` entities, the source MSD was made from.
+# The names are the dataset's own; the coarse type follows MSD where MSD has an opinion
+# (ROOM -> bedroom, KITCHEN_DINING -> kitchen, LIVING_DINING -> living, lifts and voids
+# next to stairs), so the same room gets the same type in both datasets.
+SWISS_TYPES: dict[str, RoomType] = {
+    "BEDROOM": T.BEDROOM,
+    "ROOM": T.BEDROOM,  # an undesignated private room; mostly bedrooms
+    "LIVING_ROOM": T.LIVING,
+    "LIVING_DINING": T.LIVING,
+    "KITCHEN": T.KITCHEN,
+    "KITCHEN_DINING": T.KITCHEN,
+    "DINING": T.DINING,
+    "BATHROOM": T.BATHROOM,
+    "CORRIDOR": T.ENTRY,
+    "CORRIDORS_AND_HALLS": T.ENTRY,
+    "LOBBY": T.ENTRY,
+    "STOREROOM": T.STORAGE,
+    "BASEMENT_COMPARTMENT": T.STORAGE,
+    "BIKE_STORAGE": T.STORAGE,
+    "PRAM": T.STORAGE,
+    "PRAM_AND_BIKE_STORAGE_ROOM": T.STORAGE,
+    "WASH_AND_DRY_ROOM": T.UTILITY,
+    "HEATING": T.UTILITY,
+    "TECHNICAL_AREA": T.UTILITY,
+    "BALCONY": T.OUTDOOR,
+    "LOGGIA": T.OUTDOOR,
+    "TERRACE": T.OUTDOOR,
+    "WINTERGARTEN": T.OUTDOOR,  # a glazed veranda; CubiCasa5K files SunRoom under outdoor too
+    "STAIRCASE": T.STAIRS,
+    "ELEVATOR": T.STAIRS,
+    "VOID": T.STAIRS,  # open-to-below space around a stair, as in MSD
+    "BASEMENT": T.OTHER,
+    "COUNTER_ROOM": T.OTHER,
+    "OFFICE": T.OTHER,
+    "NOT_DEFINED": T.UNKNOWN,
+    # Rarer subtypes, mostly from mixed-use buildings (all 77 values in the full file).
+    "GARDEN": T.OUTDOOR,
+    "PATIO": T.OUTDOOR,
+    "GARAGE": T.GARAGE,
+    "CARPARK": T.GARAGE,
+    "SANITARY_ROOMS": T.BATHROOM,
+    "COMMON_KITCHEN": T.KITCHEN,
+    "FOYER": T.ENTRY,
+    "CLOAKROOM": T.STORAGE,
+    "WAREHOUSE": T.STORAGE,
+    "ARCHIVE": T.STORAGE,
+    "COLD_STORAGE": T.STORAGE,
+    "LOGISTICS": T.STORAGE,
+    "OIL_TANK": T.UTILITY,
+    "HOUSE_TECHNICS_FACILITIES": T.UTILITY,
+    "ELEVATOR_FACILITIES": T.UTILITY,
+    "ELECTRICAL_SUPPLY": T.UTILITY,
+    "WATER_SUPPLY": T.UTILITY,
+    "GAS": T.UTILITY,
+    "AIR": T.UTILITY,
+    "OFFICE_TECH_ROOM": T.UTILITY,
+    "OPERATIONS_FACILITIES": T.UTILITY,
+    "OFFICE_SPACE": T.OTHER,
+    "OPEN_PLAN_OFFICE": T.OTHER,
+    "MEETING_ROOM": T.OTHER,
+    "COMMUNITY_ROOM": T.OTHER,
+    "SALESROOM": T.OTHER,
+    "SHOWROOM": T.OTHER,
+    "SPORTS_ROOMS": T.OTHER,
+    "WAITING_ROOM": T.OTHER,
+    "RECEPTION_ROOM": T.OTHER,
+    "CANTEEN": T.OTHER,
+    "BREAK_ROOM": T.OTHER,
+    "STUDIO": T.OTHER,
+    "WORKSHOP": T.OTHER,
+    "FACTORY_ROOM": T.OTHER,
+    "TEACHING_ROOM": T.OTHER,
+    "MEDICAL_ROOM": T.OTHER,
+    "DEDICATED_MEDICAL_ROOM": T.OTHER,
+    "RADATION_THERAPY": T.OTHER,  # sic: the dataset's spelling
+    "PHYSIO_AND_REHABILITATION": T.OTHER,
+    "ARCADE": T.OTHER,
+    "SHELTER": T.OTHER,
+    "VEHICLE_TRAFFIC_AREA": T.OTHER,
+}
+
+# Swiss Dwellings areas that are not rooms: structural shafts and spaces open to the sky.
+# MSD drops them too (its "Structure" class), and they would only add unlinked nodes.
+SWISS_NON_ROOM_AREAS = frozenset({"SHAFT", "TRANSPORT_SHAFT", "LIGHTWELL", "OUTDOOR_VOID"})
