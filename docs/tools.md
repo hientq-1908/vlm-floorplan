@@ -132,7 +132,7 @@ env.solution()  # scripted ToolCalls that repair the plan
 - `step(tool, arguments)` plays the call through `call_tool`, which uses `apply_tool_call` for the edit tools, and returns the tool response text.
   A refused call changes nothing and is counted.
 - `reward()` is `plan_score(current plan, target)` minus `0.05` per refused call.
-  `plan_score` is the mean of four scores from `evaluate_plan`, each skipped when the target has nothing to measure: room F1, room-type accuracy among matched rooms, link F1 where the kind must be right too, and exterior-door F1.
+  `plan_score` is the mean of four scores from `evaluate_plan`, each skipped only when the target has nothing to measure (a target item the plan misses entirely scores 0, not skipped): room F1, room-type accuracy among matched rooms, link F1 where the kind must be right too, and exterior-door F1.
   Rooms are matched by position (a point inside the real room's polygon), so a re-added room does not need its old id.
 - `solution()` returns the scripted inverse edit as `ToolCall(name, arguments, reasoning)` values.
 
@@ -203,7 +203,7 @@ Without `--records` it uses the built-in sample plan, so it also runs with no da
   A rollout of a model that has not been trained yet shows which calls it gets wrong, as `REJECTED` counts.
 - **GRPO, later.**
   `reset`, `step` and `reward` are the whole interface a trainer needs.
-  The reward is dense enough to rank rollouts from the same prompt: partial repairs score between the damaged plan and 1.0, and each refused call costs a little.
+  The reward is dense enough to rank rollouts from the same prompt: partial repairs score below 1.0, since every missing room, link or exterior door counts against the plan, and each refused call costs a little.
   Wiring the environment into a trainer is not part of this prototype.
 
 ## Limits of this prototype

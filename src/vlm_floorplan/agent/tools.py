@@ -39,7 +39,7 @@ from vlm_floorplan.schema import FloorplanGraph
 NEW_PLAN = "new_plan"
 
 _NEW_PLAN_EXAMPLE = (
-    '{"floors":[{"floor":1,"rooms":[{"id":"r0","type":"entry","xy":[474,735]},'
+    '{"floors":[{"floor":1,"rooms":[{"id":"r0","type":"entry","xy":[474,735],"entrance":true},'
     '{"id":"r1","type":"living","label":"OH","xy":[583,295]}],"links":[["r0","r1","door"]]}]}'
 )
 
@@ -58,7 +58,8 @@ NEW_PLAN_SCHEMA: dict[str, Any] = {
                     "type": "string",
                     "description": (
                         "The plan as compact JSON on one line: floors with rooms (id r0, r1, ...,"
-                        " type, xy on the 0-1000 grid, optional label) and links [a, b, kind]"
+                        " type, xy on the 0-1000 grid, optional label, optional entrance: true for"
+                        " a room an outside door opens into) and links [a, b, kind]"
                         " with kind door, opening or wall. For example: " + _NEW_PLAN_EXAMPLE
                     ),
                 }

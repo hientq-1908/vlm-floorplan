@@ -52,12 +52,17 @@ def plan_score(final: FloorplanGraph | None, target: PlanRecord) -> float:
     for kind in LinkKind:
         links = links + metrics.links.end_to_end[kind.value]
     type_accuracy = metrics.type_correct / metrics.type_labeled if metrics.type_labeled else None
-    parts = [
-        score
-        for score in (rooms.f1, type_accuracy, links.f1, metrics.entrance.f1)
-        if score is not None
-    ]
-    return sum(parts) / len(parts) if parts else 0.0
+    parts = [_target_f1(counts) for counts in (rooms, links, metrics.entrance)]
+    parts.append(type_accuracy)
+    scored = [score for score in parts if score is not None]
+    return sum(scored) / len(scored) if scored else 0.0
+
+
+def _target_f1(counts: PrfCounts) -> float | None:
+    """F1, None only when the target has nothing to find; missing every real item scores 0."""
+    if counts.tp + counts.fn == 0:
+        return None
+    return counts.f1 or 0.0
 
 
 class FloorplanEditEnv:

@@ -10,7 +10,7 @@ from vlm_floorplan.agent import (
     Task,
     candidate_tasks,
 )
-from vlm_floorplan.agent.env import REJECTION_PENALTY
+from vlm_floorplan.agent.env import REJECTION_PENALTY, plan_score
 from vlm_floorplan.agent.sample_plan import sample_record
 
 RECORD = sample_record()
@@ -74,6 +74,35 @@ def test_a_deleted_entrance_room_gets_its_exterior_door_back_with_its_own_call()
     assert [call.name for call in env.solution()][-1] == "add_exterior_door"
     solve(env)
     assert env.reward() == pytest.approx(1.0)
+
+
+def test_skipping_the_exterior_door_call_scores_below_full_reward() -> None:
+    env = FloorplanEditEnv()
+    env.reset(RECORD, DeleteRoomTask("r4"))
+    for call in env.solution():
+        if call.name != "add_exterior_door":
+            env.step(call.name, call.arguments)
+    assert env.rejected_calls == 0
+    assert env.reward() < 1.0
+
+
+def test_a_plan_with_the_right_rooms_but_no_links_or_entrance_scores_below_full() -> None:
+    bare = RECORD.graph.model_copy(
+        update={
+            "floors": [
+                floor.model_copy(
+                    update={
+                        "links": [],
+                        "rooms": [
+                            room.model_copy(update={"entrance": False}) for room in floor.rooms
+                        ],
+                    }
+                )
+                for floor in RECORD.graph.floors
+            ]
+        }
+    )
+    assert plan_score(bare, RECORD) == pytest.approx(0.5)
 
 
 def test_a_refused_call_changes_nothing_and_costs_the_penalty() -> None:
