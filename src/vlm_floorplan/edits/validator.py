@@ -169,7 +169,7 @@ def _warnings(graph: FloorplanGraph) -> list[Issue]:
     issues: list[Issue] = []
     rooms = graph.rooms()
     if rooms and not any(room.entrance for room in rooms):
-        issues.append(_warning(IssueCode.NO_ENTRANCE, "no room is marked as the entrance"))
+        issues.append(_warning(IssueCode.NO_ENTRANCE, "no room is marked as having an exterior door"))
     for floor in graph.floors:
         if len(floor.rooms) < 2:
             continue

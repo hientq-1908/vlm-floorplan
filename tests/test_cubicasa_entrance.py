@@ -59,9 +59,16 @@ def test_balcony_door_is_part_of_the_dwelling_not_an_entrance(
     assert _entrance_types(_convert(tmp_path, _outer_door_plan(balcony_class))) == []
 
 
-def test_balcony_named_in_finnish_is_not_an_entrance(tmp_path: Path) -> None:
+def test_door_onto_a_sun_room_is_not_an_entrance(tmp_path: Path) -> None:
+    assert _entrance_types(_convert(tmp_path, _outer_door_plan("Space SunRoom"))) == []
+
+
+@pytest.mark.parametrize("label", ["PARVEKE", "PARV.", "LASITETTU", "LOGGIA"])
+def test_balcony_or_glazed_space_named_in_finnish_is_not_an_entrance(
+    tmp_path: Path, label: str
+) -> None:
     parts = _outer_door_plan("Space Outdoor")
-    parts[1] = _space("Space Outdoor", _rect(20, 220, 200, 300), "PARVEKE")
+    parts[1] = _space("Space Outdoor", _rect(20, 220, 200, 300), label)
     assert _entrance_types(_convert(tmp_path, parts)) == []
 
 
