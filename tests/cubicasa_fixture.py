@@ -120,3 +120,18 @@ def write_cubicasa_plan(plan_dir: Path, two_floors: bool = False) -> Path:
     (plan_dir / "model.svg").write_text(svg, encoding="utf-8")
     Image.new("RGB", (WIDTH, HEIGHT), (255, 255, 255)).save(plan_dir / "F1_scaled.png")
     return plan_dir
+
+
+def write_custom_plan(
+    plan_dir: Path, parts: list[str], size: tuple[int, int] = (WIDTH, HEIGHT)
+) -> Path:
+    """Write a one-floor plan from raw `_space`, `_wall` and `_door` parts."""
+    plan_dir.mkdir(parents=True, exist_ok=True)
+    width, height = size
+    svg = (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}">'
+        '<g class="Model"><g class="Floorplan Floor-1">' + "".join(parts) + "</g></g></svg>"
+    )
+    (plan_dir / "model.svg").write_text(svg, encoding="utf-8")
+    Image.new("RGB", size, (255, 255, 255)).save(plan_dir / "F1_scaled.png")
+    return plan_dir

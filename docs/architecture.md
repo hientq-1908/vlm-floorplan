@@ -125,7 +125,7 @@ They do not match `F1_original.png`.
 |---|---|
 | Rooms | Each `Space` group is a room. Its polygon is repaired with `make_valid`, and the largest part is kept. |
 | Door link | Only doors whose parent is a wall count. Grow the door polygon by 6 px, and link the two rooms it overlaps most. |
-| Entrance | If a door on an external wall touches only one room, that room is an entrance. |
+| Entrance | A door on an external wall is an exterior door. The room inside is an entrance when the door touches only one room, when its other neighbour is an open-air space (outdoor, porch, terrace, car port; not a balcony), when both touched rooms lie on the inner face of the wall, or when the door is drawn up to 20 px off the room. On a plan with no wall tagged External, a door touching one room counts. |
 | Opening link | Two rooms less than 3 px apart that face each other along at least 20 px of boundary. |
 | Wall link | Two rooms within 30 px that face each other along at least 20 px of boundary, where walls cover at least 20% of the gap. Facing means straight across, so rooms that only meet diagonally at a wall cross are not linked. |
 | Position | `representative_point()` of the polygon, scaled to the 0 to 1000 grid by the image width and height. |
@@ -143,6 +143,24 @@ The roadmap check found the pitfalls below, and each has a mitigation in the cod
 | Doors touching one room | 0.6% of wall doors. | The `entrance` flag when the wall is external, and a warning otherwise. |
 | Invalid polygons | 1.5% of rooms. | The largest valid part. |
 | Mirrored or rotated images, watermarks, small Finnish labels | 3 of 14 samples. | No flip augmentation that assumes upright text, and type accuracy evaluated separately on readable plans. |
+
+### Entrance counts
+
+The first rule missed most front doors: they open onto an outdoor space that the source draws as a room, so the door touches two rooms.
+Full run over 4,992 plans, plans with 0 / 1 / 2 / 3+ entrance rooms:
+
+| Split | Before | After |
+|---|---|---|
+| train | 1268 / 2391 / 345 / 190 | 23 / 1122 / 1532 / 1517 |
+| val | 126 / 230 / 30 / 14 | 4 / 124 / 130 / 142 |
+| test | 123 / 214 / 43 / 18 | 3 / 115 / 133 / 147 |
+| all | 1517 / 2835 / 418 / 222 | 30 / 1361 / 1795 / 1806 |
+
+Of the 1,517 plans with none, 1,490 had an external door onto an outdoor space.
+The rest were doors with both rooms on one side, doors drawn past the room outline, and plans with no External wall tag.
+Many plans now have several entrance rooms, because every exterior door counts (back and patio doors too), not only the front door.
+30 plans stay at none, because the source gives no usable door: a porch-to-yard door only (12), balcony doors only (7), a door onto an annex room (5), a door on a wall not tagged External (4), or no door (2).
+Same-side doors no longer create a door link between the two rooms (40 plans changed links).
 
 The tests do not use real CubiCasa5K data, because it is CC BY-NC.
 `tests/cubicasa_fixture.py` writes a small synthetic plan in the same SVG dialect, with one case for each rule above.
