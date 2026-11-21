@@ -30,7 +30,7 @@ from vlm_floorplan.edits.lookup import next_room_id
 from vlm_floorplan.edits.ops import MAX_LABEL_LENGTH
 from vlm_floorplan.edits.summary import summarize_graph
 from vlm_floorplan.record import PlanRecord
-from vlm_floorplan.schema import Floor, FloorplanGraph, Link, LinkKind, Room
+from vlm_floorplan.schema import Floor, FloorplanGraph, LinkKind, Room
 
 MAX_DRAW_ROOMS = 12
 """`draw_plan` copies the whole plan into one tool call; bigger plans make a very long call."""
@@ -237,29 +237,16 @@ class DrawPlanTask:
         return FloorplanGraph(floors=floors, image=plan.image)
 
     def request(self, plan: FloorplanGraph) -> str:
-        return f"Draw this plan from scratch:\n{summarize_graph(_without_bbox(plan))}"
+        return f"Draw this plan from scratch:\n{summarize_graph(plan)}"
 
     def solve(self, plan: FloorplanGraph, damaged: FloorplanGraph) -> list[ToolCall]:
         reasoning = "The plan is empty and the user describes all of it, so I draw it in one call."
-        return [ToolCall(NEW_PLAN, {"plan": to_compact(_without_bbox(plan))}, reasoning)]
+        return [ToolCall(NEW_PLAN, {"plan": to_compact(plan)}, reasoning)]
 
     def reply(self, plan: FloorplanGraph) -> Reply:
         links = sum(len(floor.links) for floor in plan.floors)
         text = f"Drew the plan with {len(plan.rooms())} rooms and {links} links."
         return Reply("The new plan matches the description.", text)
-
-
-def _without_bbox(plan: FloorplanGraph) -> FloorplanGraph:
-    """The same plan with every room's bbox dropped (the bbox is leaving the schema)."""
-    floors = [
-        Floor(
-            floor=floor.floor,
-            rooms=[room.model_copy(update={"bbox": None}) for room in floor.rooms],
-            links=[Link(a=link.a, b=link.b, kind=link.kind) for link in floor.links],
-        )
-        for floor in plan.floors
-    ]
-    return FloorplanGraph(floors=floors, image=plan.image)
 
 
 TASK_KINDS = ("delete_room", "close_door", "draw_plan")
