@@ -26,7 +26,7 @@ There are twelve tools: the eleven edit tools, plus `new_plan` for drawing a who
 
 Every argument is a flat scalar: a string or an integer.
 `new_plan` takes the plan as a string on purpose.
-It is the one place a nested structure would otherwise be needed, and the plan is flat compact JSON (`compact.py`): `{"rooms":[...],"links":[...]}`, with a `size` per room and no floor.
+It is the one place a nested structure would otherwise be needed, and the plan is flat compact JSON (`compact.py`): `{"rooms":[...],"links":[...]}`, with a `size` per room (a room without one is rejected) and no floor.
 The eleven edit tools stay available after `new_plan`, for every later change.
 
 Why `new_plan` is a separate tool and not a series of `add_room` calls: drawing ten rooms and twenty links one call at a time is many turns, and the user asked for the result, not the steps.
@@ -144,7 +144,7 @@ env.solution()  # scripted ToolCalls that repair the plan
 
 | Task | Damage | Request | Scripted solution |
 |------|--------|---------|-------------------|
-| `delete_room` | A room and its links are deleted. | "Add a storage room at (850, 850). It has a shared wall with r3 (living) and a door to r4 (entry)." | `add_room`, then per neighbour `add_link` wall and, for a door or opening, `set_link_kind`, then `add_exterior_door` if the room had one. |
+| `delete_room` | A room and its links are deleted. | "Add a storage room at (850, 850), size 169. It has a shared wall with r3 (living) and a door to r4 (entry)." | `add_room`, then per neighbour `add_link` wall and, for a door or opening, `set_link_kind`, then `add_exterior_door` if the room had one. |
 | `close_door` | A door or opening becomes a wall. | "Put a door between r2 (kitchen) and r4 (entry)." | One `set_link_kind`. |
 | `draw_plan` | The plan is emptied. | "Draw this plan from scratch:" and the plan summary. | One `new_plan`. |
 
@@ -159,7 +159,7 @@ A harder request that leaves them out is a later change to `request()` only, bec
 ```json
 {"id": "sample/six-rooms#delete_room", "task": "delete_room", "reward": 1.0, "messages": [
  {"role": "system", "content": "You edit a floorplan room graph with tools. ..."},
- {"role": "user", "content": "Current plan:\nplan: 5 rooms, 7 links\nexterior wall: (0, 0), (1000, 0), (1000, 1000), (0, 1000)\nr0 bedroom at (200, 200) size 226\n...\nlinks: r0-r1 wall, ...\n\nRequest: Add a storage room at (850, 850). It has a shared wall with r3 (living) and a door to r4 (entry)."},
+ {"role": "user", "content": "Current plan:\nplan: 5 rooms, 7 links\nexterior wall: (0, 0), (1000, 0), (1000, 1000), (0, 1000)\nr0 bedroom at (200, 200) size 226\n...\nlinks: r0-r1 wall, ...\n\nRequest: Add a storage room at (850, 850), size 169. It has a shared wall with r3 (living) and a door to r4 (entry)."},
  {"role": "assistant", "reasoning_content": "The user wants a storage room at (850, 850). I add the room first. It starts with no links, so I connect it afterwards.", "content": "",
   "tool_calls": [{"type": "function", "function": {"name": "add_room", "arguments": {"type": "storage", "x": 850, "y": 850, "size": 169}}}]},
  {"role": "tool", "name": "add_room", "content": "OK: added storage room r5 at (850, 850).\nWarning: room r5 has no links to other rooms.\nplan: 6 rooms, 7 links\nexterior wall: ...\nr0 bedroom at (200, 200) size 226\n...\nr5 storage at (850, 850) size 169\nlinks: r0-r1 wall, ..."},
@@ -220,4 +220,4 @@ Without `--records` it uses the built-in sample plan, so it also runs with no da
   The floorplan image is not attached yet, so the model reads the plan from `summarize_graph`.
 - The rendered view and the tool schemas were checked against the Qwen3.5-4B chat template.
   The call format was not run against a live vLLM server here.
-- `delete_room` needs a room with at least one link, a known type and a label short enough for `add_room`, and `draw_plan` is limited to plans of twelve rooms or fewer, because it copies the whole plan into one call.
+- `delete_room` needs a room with at least one link, a size, a known type and a label short enough for `add_room`, and `draw_plan` needs a size on every room and is limited to plans of twelve rooms or fewer, because it copies the whole plan into one call.

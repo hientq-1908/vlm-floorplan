@@ -14,7 +14,7 @@ def sample_graph() -> FloorplanGraph:
     rooms = [
         Room(id="r0", type="entry", xy=(474, 735), size=52, entrance=True),
         Room(id="r1", type="living", xy=(583, 295), size=160, label="KÄYTÄVÄ"),
-        Room(id="r2", type="bedroom", xy=(10, 20)),
+        Room(id="r2", type="bedroom", xy=(10, 20), size=30),
     ]
     floor = Floor(floor=1, rooms=rooms, links=[Link(a="r0", b="r1", kind="door")])
     return FloorplanGraph(floors=[floor], image=ImageSize(w=640, h=480), exterior_wall=WALL)
@@ -41,7 +41,13 @@ def test_a_room_is_written_as_a_point_with_a_size() -> None:
     rooms = json.loads(to_compact(sample_graph()))["rooms"]
     assert list(rooms[0]) == ["id", "type", "xy", "size", "entrance"]
     assert set(rooms[1]) == {"id", "type", "label", "xy", "size"}
-    assert set(rooms[2]) == {"id", "type", "xy"}  # a room without a size writes none
+    assert set(rooms[2]) == {"id", "type", "xy", "size"}
+
+
+def test_a_compact_room_without_a_size_is_rejected_by_id() -> None:
+    text = '{"rooms":[{"id":"r7","type":"living","xy":[5,5]}],"links":[]}'
+    with pytest.raises(ValueError, match=r"room 'r7' has no \"size\""):
+        from_compact(text, ImageSize(w=10, h=10))
 
 
 def test_the_exterior_wall_is_never_written() -> None:
@@ -68,7 +74,7 @@ def test_the_floors_wrapper_is_rejected_with_the_flat_form_named() -> None:
 
 
 def test_a_compact_room_with_a_bbox_is_rejected() -> None:
-    old = '{"rooms":[{"id":"r0","type":"living","xy":[5,5],"bbox":[0,0,10,10]}],"links":[]}'
+    old = '{"rooms":[{"id":"r0","type":"living","xy":[5,5],"size":5,"bbox":[0,0,9,9]}]}'
     with pytest.raises(ValueError, match="bbox"):
         from_compact(old, ImageSize(w=640, h=480))
 
@@ -91,7 +97,7 @@ def test_a_room_size_outside_the_grid_radius_is_rejected(size: object) -> None:
         '{"links": []}',
         '{"rooms":[],"links":[["r0","r1"]]}',  # malformed link
         '{"rooms":[],"links":"x"}',
-        '{"rooms":[{"id":"r0","type":"living","xy":[1,2]}],"links":[["r0","r9","door"]]}',
+        '{"rooms":[{"id":"r0","type":"living","xy":[1,2],"size":5}],"links":[["r0","r9","door"]]}',
     ],
 )
 def test_malformed_model_output_raises_value_error(text: str) -> None:

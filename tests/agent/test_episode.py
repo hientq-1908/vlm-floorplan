@@ -107,6 +107,32 @@ def test_delete_room_tasks_skip_rooms_add_room_would_refuse() -> None:
     assert tasks
 
 
+def test_draw_plan_is_offered_only_when_every_room_has_a_size() -> None:
+    graph = RECORD.graph
+    floors = [
+        floor.model_copy(
+            update={
+                "rooms": [
+                    room.model_copy(update={"size": None}) if room.id == "r2" else room
+                    for room in floor.rooms
+                ]
+            }
+        )
+        for floor in graph.floors
+    ]
+    sizeless = RECORD.model_copy(update={"graph": graph.model_copy(update={"floors": floors})})
+    assert candidate_tasks(RECORD, "draw_plan") == [DrawPlanTask()]
+    assert candidate_tasks(sizeless, "draw_plan") == []
+
+
+def test_the_delete_room_request_gives_the_size_add_room_uses() -> None:
+    episode = build_episode(RECORD, DeleteRoomTask("r5"))
+    request = episode["messages"][1]["content"].split("Request: ")[1]
+    assert request.startswith("Add a storage room at (850, 850), size 169.")
+    add_room = episode["messages"][2]["tool_calls"][0]["function"]["arguments"]
+    assert add_room["size"] == 169
+
+
 def test_the_delete_room_reply_lists_the_links_in_plain_english() -> None:
     final = build_episode(RECORD, DeleteRoomTask("r5"))["messages"][-1]
     assert final["content"] == (

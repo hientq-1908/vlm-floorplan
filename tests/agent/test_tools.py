@@ -82,6 +82,7 @@ def test_new_plan_ignores_a_wall_the_model_tries_to_write() -> None:
         ('{"rooms":[{"id":"r0","type":"kitchen","xy":[5000,1],"size":9}],"links":[]}', "not valid"),
         ('{"floors":[{"floor":1,"rooms":[],"links":[]}]}', 'no "floors"'),
         ('{"rooms":[{"id":"r0","type":"kitchen","xy":[1,1],"size":0}],"links":[]}', "size"),
+        ('{"rooms":[{"id":"r3","type":"kitchen","xy":[1,1]}],"links":[]}', "room 'r3' has no"),
     ],
 )
 def test_new_plan_rejects_an_invalid_plan_and_leaves_the_plan_alone(

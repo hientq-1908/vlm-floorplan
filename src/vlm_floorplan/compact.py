@@ -19,7 +19,8 @@ Example (two rooms, one door):
 
 Internally a graph still holds a list of floors; this form is always exactly one,
 numbered 1. `from_compact(to_compact(graph), graph.image, graph.exterior_wall) == graph`
-holds for every valid single-floor graph whose floor is numbered 1, which the tests check.
+holds for every valid single-floor graph whose floor is numbered 1 and whose rooms all
+have a size, which the tests check. `from_compact` rejects a room without a size.
 Parsing goes through the same pydantic validators, so a model output that parses
 is also a structurally valid graph.
 """
@@ -86,6 +87,9 @@ def from_compact(
         raise ValueError('compact plan has no "floors": write {"rooms":[...],"links":[...]}')
     if not isinstance(data, dict) or not isinstance(data.get("rooms"), list):
         raise ValueError('compact plan must be a JSON object with a "rooms" list')
+    for item in data["rooms"]:
+        if isinstance(item, dict) and item.get("size") is None:
+            raise ValueError(f'room {item.get("id")!r} has no "size": every room needs one')
     links = data.get("links", [])
     if not isinstance(links, list):
         raise ValueError('"links" must be a list of [a, b, kind]')
