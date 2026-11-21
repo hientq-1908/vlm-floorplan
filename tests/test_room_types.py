@@ -21,8 +21,8 @@ from vlm_floorplan.schema import RoomType
         ("OH", RoomType.LIVING),
         ("K+RT", RoomType.KITCHEN),
         ("KHH", RoomType.UTILITY),
-        ("PARVEKE", RoomType.OUTDOOR),
-        ("ALATERASSI", RoomType.OUTDOOR),  # compound word: matched by stem
+        ("PARVEKE", RoomType.TERRACE),
+        ("ALATERASSI", RoomType.TERRACE),  # compound word: matched by stem
         ("KOMERO", RoomType.STORAGE),  # "K" must not match inside a longer word
         ("", RoomType.UNKNOWN),
         (None, RoomType.UNKNOWN),

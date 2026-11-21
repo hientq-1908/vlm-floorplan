@@ -34,7 +34,7 @@ Output one JSON object and nothing after it, with this structure:
   image (x to the right, y down; [0,0] is the top-left corner).
 - "type" is one of: {room_types}.
 - "entrance": true marks a room that an exterior door opens into.
-- every balcony, terrace or porch is a room of type "outdoor".
+- every balcony, terrace or porch is a room of type "terrace".
 - "links" lists connections between two rooms on the same floor as ["a","b","kind"],
   where kind is one of: {link_kinds}.
   "door": a door connects them. "opening": no wall between them (open plan).

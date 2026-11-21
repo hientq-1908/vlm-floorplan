@@ -48,7 +48,7 @@ class RoomType(StrEnum):
     ENTRY = "entry"  # entrance, lobby, hall, corridor (circulation)
     STORAGE = "storage"  # also closets and walk-in wardrobes
     UTILITY = "utility"  # laundry, technical and boiler rooms
-    OUTDOOR = "outdoor"  # balcony, terrace, porch, patio
+    TERRACE = "terrace"  # balcony, terrace, porch, patio
     GARAGE = "garage"  # also carports
     STAIRS = "stairs"
     OTHER = "other"  # a labeled room that fits none of the above (office, attic)
