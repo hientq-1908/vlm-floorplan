@@ -132,7 +132,7 @@ env.solution()  # scripted ToolCalls that repair the plan
 - `step(tool, arguments)` plays the call through `call_tool`, which uses `apply_tool_call` for the edit tools, and returns the tool response text.
   A refused call changes nothing and is counted.
 - `reward()` is `plan_score(current plan, target)` minus `0.05` per refused call.
-  `plan_score` is the mean of four scores from `evaluate_plan`, each skipped only when neither the target nor the plan has anything to measure (a component where the plan misses every real item, or has only spurious ones, scores 0): room F1, room-type accuracy among matched rooms, link F1 where the kind must be right too, and exterior-door F1.
+  `plan_score` is the mean of four scores from `evaluate_plan`, each skipped only when neither the target nor the plan has anything to measure (a component where the plan misses every real item, or has only spurious ones, scores 0): room F1, room-type accuracy among matched rooms, link F1 where the kind must be right too, and exterior-door F1 over every room, so a real entrance room that is missing also counts as a missed exterior door.
   Rooms are matched by position (a point inside the real room's polygon), so a re-added room does not need its old id.
 - `solution()` returns the scripted inverse edit as `ToolCall(name, arguments, reasoning)` values.
 

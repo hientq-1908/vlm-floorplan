@@ -87,6 +87,21 @@ def test_skipping_the_exterior_door_call_scores_below_full_reward() -> None:
     assert env.reward() < 1.0
 
 
+def test_every_partial_repair_of_a_deleted_entrance_room_beats_the_damaged_plan() -> None:
+    # Oracle: the docs promise every missing room, link or exterior door counts against
+    # the plan, so a plan with the room back is closer to the target than one without it.
+    env = FloorplanEditEnv()
+    env.reset(RECORD, DeleteRoomTask("r4"))
+    damaged = env.reward()
+    partial = []
+    for call in env.solution():
+        env.step(call.name, call.arguments)
+        partial.append(env.reward())
+    assert env.rejected_calls == 0
+    assert all(reward > damaged for reward in partial)
+    assert partial[-1] == pytest.approx(1.0)
+
+
 def without_entrances(graph: FloorplanGraph, *, keep_links: bool = True) -> FloorplanGraph:
     return graph.model_copy(
         update={

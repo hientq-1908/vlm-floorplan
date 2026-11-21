@@ -53,10 +53,29 @@ def plan_score(final: FloorplanGraph | None, target: PlanRecord) -> float:
     for kind in LinkKind:
         links = links + metrics.links.end_to_end[kind.value]
     type_accuracy = metrics.type_correct / metrics.type_labeled if metrics.type_labeled else None
-    parts = [_target_f1(counts) for counts in (rooms, links, metrics.entrance)]
+    exterior_doors = _exterior_doors(final, target, metrics.entrance)
+    parts = [_target_f1(counts) for counts in (rooms, links, exterior_doors)]
     parts.append(type_accuracy)
     scored = [score for score in parts if score is not None]
     return sum(scored) / len(scored) if scored else 0.0
+
+
+def _exterior_doors(
+    final: FloorplanGraph | None, target: PlanRecord, matched: PrfCounts
+) -> PrfCounts:
+    """Exterior-door counts over all rooms, not just matched ones.
+
+    `evaluate_plan` only compares rooms it matched, so a missing entrance room would
+    otherwise hide its missing exterior door. Each unmatched real entrance is a miss and
+    each unmatched predicted entrance is spurious.
+    """
+    real = sum(room.entrance for room in target.graph.rooms())
+    predicted = sum(room.entrance for room in final.rooms()) if final is not None else 0
+    return PrfCounts(
+        tp=matched.tp,
+        fp=predicted - matched.tp,
+        fn=real - matched.tp,
+    )
 
 
 def _target_f1(counts: PrfCounts) -> float | None:
