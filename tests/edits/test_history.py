@@ -19,7 +19,7 @@ from vlm_floorplan.edits import (
     replay,
 )
 
-from .helpers import sample_graph
+from .helpers import sample_graph, single_floor_graph
 
 
 def test_a_new_history_has_nothing_to_undo_or_redo() -> None:
@@ -72,11 +72,11 @@ def test_edits_are_judged_against_the_undone_state() -> None:
 
 
 def test_recorded_ops_are_resolved_so_replay_is_deterministic() -> None:
-    history = EditHistory(sample_graph())
-    history.apply(AddRoom(type="storage", x=5, y=5, floor=1))
-    history.apply(DeleteRoom(room_id="r7"))
-    history.apply(AddRoom(type="utility", x=9, y=9, floor=2))
-    assert [getattr(op, "room_id", None) for op in history.ops] == ["r7", "r7", "r7"]
+    history = EditHistory(single_floor_graph())
+    history.apply(AddRoom(type="storage", x=5, y=5, size=30))
+    history.apply(DeleteRoom(room_id="r5"))
+    history.apply(AddRoom(type="utility", x=9, y=9, size=30))
+    assert [getattr(op, "room_id", None) for op in history.ops] == ["r5", "r5", "r5"]
     assert replay(history.base, history.ops) == history.graph
 
 
@@ -89,10 +89,10 @@ def test_replay_reports_the_first_refused_op() -> None:
 
 
 def test_ops_survive_a_json_round_trip() -> None:
-    history = EditHistory(sample_graph())
-    history.apply(AddRoom(type="storage", x=5, y=5, floor=1, label="Pantry"))
-    history.apply(AddLink(room_a="r7", room_b="r2", kind="wall"))
-    history.apply(SetLinkKind(room_a="r7", room_b="r2", kind="door"))
+    history = EditHistory(single_floor_graph())
+    history.apply(AddRoom(type="storage", x=5, y=5, size=30, label="Pantry"))
+    history.apply(AddLink(room_a="r5", room_b="r2", kind="wall"))
+    history.apply(SetLinkKind(room_a="r5", room_b="r2", kind="door"))
     text = dump_ops(history.ops)
     assert "null" not in text
     assert load_ops(text) == list(history.ops)

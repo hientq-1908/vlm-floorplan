@@ -30,8 +30,7 @@ class EditErrorCode(StrEnum):
     INVALID_ARGUMENTS = "invalid_arguments"  # the tool call itself is malformed
     UNKNOWN_TOOL = "unknown_tool"
     UNKNOWN_ROOM = "unknown_room"
-    UNKNOWN_FLOOR = "unknown_floor"
-    AMBIGUOUS_FLOOR = "ambiguous_floor"  # several floors and the op did not say which
+    AMBIGUOUS_FLOOR = "ambiguous_floor"  # the plan has several floors; the tools edit one
     ID_IN_USE = "id_in_use"
     CROSS_FLOOR = "cross_floor"  # links never join rooms of different floors
     SELF_LINK = "self_link"

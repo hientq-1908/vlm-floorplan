@@ -11,8 +11,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from vlm_floorplan.compact import to_compact
 from vlm_floorplan.evaluation.aggregate import aggregate, aggregate_by_size
+from vlm_floorplan.evaluation.floors_json import to_floors_json
 from vlm_floorplan.evaluation.harness import FAILURE_KEYS
 from vlm_floorplan.evaluation.metrics import PlanMetrics, evaluate_plan
 from vlm_floorplan.evaluation.parser import ParseError, ParseResult, parse_model_output
@@ -85,7 +85,7 @@ def score_run(run_dir: Path, records: list[PlanRecord]) -> dict[str, Any]:
                 "detail": result.detail,
                 "source": result.source,
                 "lenient": result.lenient,
-                "prediction": to_compact(result.graph) if result.graph else None,
+                "prediction": to_floors_json(result.graph) if result.graph else None,
                 "metrics": plan_metrics.model_dump(),
             }
         )

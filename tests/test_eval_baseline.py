@@ -12,7 +12,6 @@ import pytest
 from helpers_eval import gt_record
 from PIL import Image
 
-from vlm_floorplan.compact import to_compact
 from vlm_floorplan.evaluation.baseline_job import (
     bundle_results,
     run_baseline,
@@ -27,6 +26,7 @@ from vlm_floorplan.evaluation.baseline_spec import (
     unpack_split,
 )
 from vlm_floorplan.evaluation.client import ApiError, ChatResponse
+from vlm_floorplan.evaluation.floors_json import to_floors_json
 from vlm_floorplan.evaluation.harness import load_records
 from vlm_floorplan.evaluation.launcher import (
     _without_credentials,
@@ -47,7 +47,7 @@ def split(tmp_path: Path) -> Path:
 
 class GoodClient:
     def complete(self, request: dict[str, Any]) -> ChatResponse:
-        return ChatResponse(to_compact(gt_record().graph), "", "stop", 100, 50, 0.1)
+        return ChatResponse(to_floors_json(gt_record().graph), "", "stop", 100, 50, 0.1)
 
 
 class BrokenClient:

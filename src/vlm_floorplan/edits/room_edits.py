@@ -21,6 +21,7 @@ from vlm_floorplan.edits.ops import (
     MoveRoom,
     RemoveExteriorDoor,
     SetRoomLabel,
+    SetRoomSize,
     SetRoomType,
 )
 from vlm_floorplan.edits.outcome import EditError, EditErrorCode
@@ -35,24 +36,18 @@ def swap_room(graph: FloorplanGraph, floor_index: int, new_room: Room) -> Floorp
     )
 
 
-def _resolve_floor(graph: FloorplanGraph, number: int | None) -> int | EditError:
-    numbers = [floor.floor for floor in graph.floors]
-    if number is None:
-        if len(numbers) == 1:
-            return 0
-        return make_error(
-            EditErrorCode.AMBIGUOUS_FLOOR,
-            f"The plan has floors {numbers}; say which floor the room goes on.",
-        )
-    if number not in numbers:
-        return make_error(
-            EditErrorCode.UNKNOWN_FLOOR, f"There is no floor {number}; floors are {numbers}."
-        )
-    return numbers.index(number)
+def _only_floor(graph: FloorplanGraph) -> int | EditError:
+    """The index of the plan's one floor; the model-facing tools work on single-floor plans."""
+    if len(graph.floors) == 1:
+        return 0
+    return make_error(
+        EditErrorCode.AMBIGUOUS_FLOOR,
+        f"The plan has {len(graph.floors)} floors; these tools edit single-floor plans.",
+    )
 
 
 def add_room(graph: FloorplanGraph, op: AddRoom) -> Change | EditError:
-    floor_index = _resolve_floor(graph, op.floor)
+    floor_index = _only_floor(graph)
     if isinstance(floor_index, EditError):
         return floor_index
     floor = graph.floors[floor_index]
@@ -64,13 +59,12 @@ def add_room(graph: FloorplanGraph, op: AddRoom) -> Change | EditError:
         type=op.type,
         label=op.label,
         xy=(op.x, op.y),
+        size=op.size,
     )
     new_floor = Floor(floor=floor.floor, rooms=[*floor.rooms, room], links=floor.links)
-    applied = op.model_copy(update={"room_id": room_id, "floor": floor.floor})
+    applied = op.model_copy(update={"room_id": room_id})
     name = f" '{room.label}'" if room.label else ""
-    description = (
-        f"added {room.type.value} room {room_id}{name} at ({op.x}, {op.y}) on floor {floor.floor}"
-    )
+    description = f"added {room.type.value} room {room_id}{name} at ({op.x}, {op.y})"
     return Change(replace_floor(graph, floor_index, new_floor), applied, description)
 
 
@@ -84,6 +78,18 @@ def move_room(graph: FloorplanGraph, op: MoveRoom) -> Change | EditError:
     new_graph = swap_room(graph, floor_index, rebuilt_room(room, xy=(op.x, op.y)))
     description = f"moved {room.id} from ({room.xy[0]}, {room.xy[1]}) to ({op.x}, {op.y})"
     return Change(new_graph, op, description)
+
+
+def set_room_size(graph: FloorplanGraph, op: SetRoomSize) -> Change | EditError:
+    found = locate_room(graph, op.room_id)
+    if found is None:
+        return unknown_room_error(graph, op.room_id)
+    floor_index, room = found
+    if room.size == op.size:
+        return no_change(f"Room {room.id} already has size {op.size}.", room.id)
+    new_graph = swap_room(graph, floor_index, rebuilt_room(room, size=op.size))
+    before = f"from {room.size} " if room.size is not None else ""
+    return Change(new_graph, op, f"changed the size of {room.id} {before}to {op.size}")
 
 
 def delete_room(graph: FloorplanGraph, op: DeleteRoom) -> Change | EditError:

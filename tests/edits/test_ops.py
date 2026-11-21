@@ -37,9 +37,9 @@ def test_coordinates_must_be_on_the_grid(coord: int) -> None:
 
 
 def test_blank_label_means_no_label_and_long_labels_are_rejected() -> None:
-    assert AddRoom(type="living", x=1, y=1, label="   ").label is None
+    assert AddRoom(type="living", x=1, y=1, size=10, label="   ").label is None
     with pytest.raises(ValidationError):
-        AddRoom(type="living", x=1, y=1, label="x" * 41)
+        AddRoom(type="living", x=1, y=1, size=10, label="x" * 41)
 
 
 def test_set_room_label_keeps_a_string_so_it_survives_json() -> None:

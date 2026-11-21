@@ -4,13 +4,13 @@
 the conversation the model should learn:
 
     system   a short instruction; the template adds the tool list in front of it
-    user     the damaged plan (`summarize_graph`) and the request
+    user     the damaged plan (`summarize_graph`, with its exterior wall) and the request
     assistant  reasoning_content + one tool call
-    tool     the real tool response from the environment
+    tool     the real tool response from the environment: status, then the whole plan
     ...      one assistant/tool pair per call
     assistant  reasoning_content + a short final reply
 
-The record also carries `tools` (the eleven tool schemas), which TRL passes to the chat template.
+The record also carries `tools` (the twelve tool schemas), which TRL passes to the chat template.
 Arguments stay a dict: the Qwen3.5 template renders a dict as `<parameter=...>` blocks.
 `reward` and `task` are metadata for filtering and are not part of the conversation.
 """
@@ -28,7 +28,12 @@ from vlm_floorplan.record import PlanRecord
 
 SYSTEM_PROMPT = (
     "You edit a floorplan room graph with tools. Rooms are points on a 0-1000 grid"
-    " (x to the right, y down); links say how two rooms connect (door, opening, wall)."
+    " (x to the right, y down), each with a size: the radius of a circle with the room's area"
+    " on the same grid; links say how two rooms connect (door, opening, wall)."
+    " Each user message starts with the current plan and its exterior wall: indoor rooms go"
+    " inside the wall, terraces outside it, against the wall."
+    " Every tool response says whether the call succeeded (OK) or failed (REJECTED)"
+    " and gives the plan as it is now."
     " Call one tool at a time and read its response before the next call."
     " A door or opening needs a wall link first. When the request is done, reply in one sentence."
 )

@@ -142,6 +142,11 @@ def test_record_ground_truth_matches_the_graph(cubicasa_record: PlanRecord) -> N
 
 def test_converted_graph_round_trips_through_compact_json(cubicasa_record: PlanRecord) -> None:
     graph = cubicasa_record.graph
+    sized = [
+        floor.model_copy(update={"rooms": [r.model_copy(update={"size": 50}) for r in floor.rooms]})
+        for floor in graph.floors
+    ]
+    graph = graph.model_copy(update={"floors": sized})
     assert from_compact(to_compact(graph), graph.image) == graph
 
 

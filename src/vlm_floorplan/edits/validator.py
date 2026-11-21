@@ -22,7 +22,7 @@ import re
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from vlm_floorplan.schema import GRID_MAX, Floor, FloorplanGraph, Room
+from vlm_floorplan.schema import GRID_MAX, MAX_ROOM_SIZE, Floor, FloorplanGraph, Room
 
 _ROOM_ID = re.compile(r"^r\d+$")
 
@@ -37,6 +37,7 @@ class IssueCode(StrEnum):
     DUPLICATE_ROOM_ID = "duplicate_room_id"
     BAD_ROOM_ID = "bad_room_id"
     COORD_OUT_OF_RANGE = "coord_out_of_range"
+    SIZE_OUT_OF_RANGE = "size_out_of_range"
     SELF_LINK = "self_link"
     DANGLING_LINK = "dangling_link"  # an end is not a room on this floor
     CROSS_FLOOR_LINK = "cross_floor_link"  # an end is a room on another floor
@@ -99,6 +100,14 @@ def _check_room(room: Room) -> list[Issue]:
                     room.id,
                 )
             )
+    if room.size is not None and not 1 <= room.size <= MAX_ROOM_SIZE:
+        issues.append(
+            _error(
+                IssueCode.SIZE_OUT_OF_RANGE,
+                f"room {room.id} has size={room.size}, outside 1-{MAX_ROOM_SIZE}",
+                room.id,
+            )
+        )
     return issues
 
 
@@ -107,7 +116,7 @@ def _check_floor(floor: Floor, floor_of: dict[str, int]) -> list[Issue]:
     here = {room.id for room in floor.rooms}
     seen_pairs: set[frozenset[str]] = set()
     for link in floor.links:
-        name = f"link {link.a}-{link.b} on floor {floor.floor}"
+        name = f"link {link.a}-{link.b}"
         if link.a == link.b:
             issues.append(_error(IssueCode.SELF_LINK, f"{name} connects a room to itself", link.a))
             continue
@@ -137,7 +146,7 @@ def _check_floor(floor: Floor, floor_of: dict[str, int]) -> list[Issue]:
             issues.append(
                 _error(
                     IssueCode.DUPLICATE_LINK,
-                    f"{link.a} and {link.b} are linked more than once on floor {floor.floor}",
+                    f"{link.a} and {link.b} are linked more than once",
                     link.a,
                     link.b,
                 )
@@ -181,7 +190,7 @@ def _warnings(graph: FloorplanGraph) -> list[Issue]:
                 issues.append(
                     _warning(
                         IssueCode.ISOLATED_ROOM,
-                        f"room {room.id} has no links to other rooms on floor {floor.floor}",
+                        f"room {room.id} has no links to other rooms",
                         room.id,
                     )
                 )

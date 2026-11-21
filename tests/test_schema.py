@@ -41,13 +41,13 @@ def test_floor_numbers_must_be_unique() -> None:
 
 
 def test_dangling_link_is_rejected() -> None:
-    with pytest.raises(ValidationError, match="not a room on this floor"):
+    with pytest.raises(ValidationError, match="not a room in the plan"):
         graph([room("r0")], [Link(a="r0", b="r9", kind="door")])
 
 
 def test_link_across_floors_is_rejected() -> None:
     """A floor's links may only name rooms of that floor, so nothing links floors."""
-    with pytest.raises(ValidationError, match="not a room on this floor"):
+    with pytest.raises(ValidationError, match="not a room in the plan"):
         Floor(floor=2, rooms=[room("r1")], links=[Link(a="r1", b="r0", kind="door")])
 
 
@@ -107,3 +107,23 @@ def test_extra_fields_are_rejected() -> None:
 def test_a_graph_needs_at_least_one_floor() -> None:
     with pytest.raises(ValidationError):
         FloorplanGraph(floors=[], image=IMAGE)
+
+
+def test_a_room_size_is_a_radius_between_one_and_half_the_grid() -> None:
+    assert Room(id="r0", type="living", xy=(1, 1)).size is None
+    assert Room(id="r0", type="living", xy=(1, 1), size=500).size == 500
+    for bad in (0, 501):
+        with pytest.raises(ValidationError, match="size"):
+            Room(id="r0", type="living", xy=(1, 1), size=bad)
+
+
+def test_the_exterior_wall_is_optional_but_a_polygon_when_given() -> None:
+    floor = Floor(floor=1, rooms=[Room(id="r0", type="living", xy=(1, 1))])
+    image = ImageSize(w=10, h=10)
+    assert FloorplanGraph(floors=[floor], image=image).exterior_wall is None
+    wall = [(0, 0), (0, 10), (10, 10)]
+    assert FloorplanGraph(floors=[floor], image=image, exterior_wall=wall).exterior_wall == wall
+    with pytest.raises(ValidationError):
+        FloorplanGraph(floors=[floor], image=image, exterior_wall=[(0, 0), (1, 1)])
+    with pytest.raises(ValidationError):
+        FloorplanGraph(floors=[floor], image=image, exterior_wall=[(0, 0), (1, 1), (2000, 5)])

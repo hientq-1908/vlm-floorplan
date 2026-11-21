@@ -125,7 +125,7 @@ Design notes and the takedown procedure are in `docs/resplan.md`.
 | `src/vlm_floorplan/resplan/` | ResPlan fetch, plan-to-graph converter, PNG renderer and build script. |
 | `src/vlm_floorplan/viewer/` | The overlay drawing and the contact sheet. |
 | `src/vlm_floorplan/edits/` | Typed edit ops, `apply_op`, the graph validator, tool schemas, text summaries and edit history. |
-| `src/vlm_floorplan/agent/` | The eleven agent tools (ten edits and `new_plan`), `FloorplanEditEnv`, corruption tasks and the TRL episode builder (`docs/tools.md`). |
+| `src/vlm_floorplan/agent/` | The twelve agent tools (eleven edits and `new_plan`), `FloorplanEditEnv`, corruption tasks and the TRL episode builder (`docs/tools.md`). |
 | `src/vlm_floorplan/evaluation/` | The evaluation harness, parser and metrics, and the ClearML baseline launcher (`docs/evaluation.md`). |
 | `deploy/vllm/` | The vLLM serving script for the baseline job. |
 | `tests/` | Unit tests on synthetic fixtures, plus the training-format tests. |
