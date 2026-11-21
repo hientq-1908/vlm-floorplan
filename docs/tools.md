@@ -140,7 +140,7 @@ env.solution()  # scripted ToolCalls that repair the plan
 
 | Task | Damage | Request | Scripted solution |
 |------|--------|---------|-------------------|
-| `delete_room` | A room and its links are deleted. | "Add a storage at (850, 850). It has a shared wall with r3 (living) and a door to r4 (entry)." | `add_room`, then per neighbour `add_link` wall and, for a door or opening, `set_link_kind`, then `add_exterior_door` if the room had one. |
+| `delete_room` | A room and its links are deleted. | "Add a storage room at (850, 850). It has a shared wall with r3 (living) and a door to r4 (entry)." | `add_room`, then per neighbour `add_link` wall and, for a door or opening, `set_link_kind`, then `add_exterior_door` if the room had one. |
 | `close_door` | A door or opening becomes a wall. | "Put a door between r2 (kitchen) and r4 (entry)." | One `set_link_kind`. |
 | `draw_plan` | The plan is emptied. | "Draw this plan from scratch:" and the plan summary. | One `new_plan`. |
 
@@ -155,8 +155,8 @@ A harder request that leaves them out is a later change to `request()` only, bec
 ```json
 {"id": "sample/six-rooms#delete_room", "task": "delete_room", "reward": 1.0, "messages": [
  {"role": "system", "content": "You edit a floorplan room graph with tools. ..."},
- {"role": "user", "content": "Current plan:\nfloor 1: 5 rooms, 7 links\n  r0 bedroom at (200, 200)\n  ...\n  links: r0-r1 wall, r1-r2 wall, ...\n\nRequest: Add a storage at (850, 850). It has a shared wall with r3 (living) and a door to r4 (entry)."},
- {"role": "assistant", "reasoning_content": "The user wants a storage at (850, 850). I add the room first. It starts with no links, so I connect it afterwards.", "content": "",
+ {"role": "user", "content": "Current plan:\nfloor 1: 5 rooms, 7 links\n  r0 bedroom at (200, 200)\n  ...\n  links: r0-r1 wall, r1-r2 wall, ...\n\nRequest: Add a storage room at (850, 850). It has a shared wall with r3 (living) and a door to r4 (entry)."},
+ {"role": "assistant", "reasoning_content": "The user wants a storage room at (850, 850). I add the room first. It starts with no links, so I connect it afterwards.", "content": "",
   "tool_calls": [{"type": "function", "function": {"name": "add_room", "arguments": {"type": "storage", "x": 850, "y": 850}}}]},
  {"role": "tool", "name": "add_room", "content": "OK: added storage room r5 at (850, 850) on floor 1.\nWarning: room r5 has no links to other rooms on floor 1.\nThe plan now has 6 rooms and 7 links (4 door, 1 opening, 2 wall)."},
  {"role": "assistant", "reasoning_content": "The request says r5 shares a wall with r3, so I link them.", "content": "",
@@ -168,7 +168,7 @@ A harder request that leaves them out is a later change to `request()` only, bec
  {"role": "assistant", "reasoning_content": "Now I turn the wall between r5 and r4 into a door.", "content": "",
   "tool_calls": [{"type": "function", "function": {"name": "set_link_kind", "arguments": {"room_a": "r5", "room_b": "r4", "kind": "door"}}}]},
  {"role": "tool", "name": "set_link_kind", "content": "OK: changed the link between r5 and r4 from wall to door.\nThe plan now has 6 rooms and 9 links (5 door, 1 opening, 3 wall)."},
- {"role": "assistant", "reasoning_content": "The room and everything the request lists are in place.", "content": "Added the storage at (850, 850). It has a shared wall with r3 (living) and a door to r4 (entry)."}
+ {"role": "assistant", "reasoning_content": "The room and everything the request lists are in place.", "content": "Added the storage room at (850, 850). It has a shared wall with r3 (living) and a door to r4 (entry)."}
 ]}
 ```
 

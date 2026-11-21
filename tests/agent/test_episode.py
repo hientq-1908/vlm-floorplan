@@ -110,6 +110,6 @@ def test_delete_room_tasks_skip_rooms_add_room_would_refuse() -> None:
 def test_the_delete_room_reply_lists_the_links_in_plain_english() -> None:
     final = build_episode(RECORD, DeleteRoomTask("r5"))["messages"][-1]
     assert final["content"] == (
-        "Added the storage at (850, 850). It has a shared wall with r3 (living)"
+        "Added the storage room at (850, 850). It has a shared wall with r3 (living)"
         " and a door to r4 (entry)."
     )

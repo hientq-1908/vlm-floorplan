@@ -30,7 +30,7 @@ from vlm_floorplan.edits.lookup import next_room_id
 from vlm_floorplan.edits.ops import MAX_LABEL_LENGTH
 from vlm_floorplan.edits.summary import summarize_graph
 from vlm_floorplan.record import PlanRecord
-from vlm_floorplan.schema import Floor, FloorplanGraph, LinkKind, Room
+from vlm_floorplan.schema import Floor, FloorplanGraph, LinkKind, Room, RoomType
 
 MAX_DRAW_ROOMS = 12
 """`draw_plan` copies the whole plan into one tool call; bigger plans make a very long call."""
@@ -70,9 +70,32 @@ def _floor_of(plan: FloorplanGraph, room_id: str) -> Floor:
     return next(f for f in plan.floors if any(r.id == room_id for r in f.rooms))
 
 
+_TYPE_NOUNS = {
+    RoomType.LIVING: "living room",
+    RoomType.KITCHEN: "kitchen",
+    RoomType.DINING: "dining room",
+    RoomType.BEDROOM: "bedroom",
+    RoomType.BATHROOM: "bathroom",
+    RoomType.ENTRY: "entry",
+    RoomType.STORAGE: "storage room",
+    RoomType.UTILITY: "utility room",
+    RoomType.OUTDOOR: "outdoor space",
+    RoomType.GARAGE: "garage",
+    RoomType.STAIRS: "staircase",
+    RoomType.OTHER: "room",
+    RoomType.UNKNOWN: "room",
+}
+
+
 def _type_name(room: Room) -> str:
-    """The room type as a noun phrase: 'living' is 'living room'."""
-    return "living room" if room.type.value == "living" else room.type.value
+    """The room type as a noun, e.g. 'living' is 'living room'."""
+    return _TYPE_NOUNS[room.type]
+
+
+def _a_type_name(room: Room) -> str:
+    """The room type with its indefinite article, e.g. 'an entry'."""
+    noun = _type_name(room)
+    return f"{'an' if noun[0] in 'aeio' else 'a'} {noun}"
 
 
 def _article(kind: LinkKind) -> str:
@@ -131,7 +154,7 @@ class DeleteRoomTask:
     def request(self, plan: FloorplanGraph) -> str:
         room = _room(plan, self.room_id)
         label = f" called '{room.label}'" if room.label else ""
-        text = f"Add a {_type_name(room)}{label} at ({room.xy[0]}, {room.xy[1]})."
+        text = f"Add {_a_type_name(room)}{label} at ({room.xy[0]}, {room.xy[1]})."
         return text + self._connections(plan)
 
     def solve(self, plan: FloorplanGraph, damaged: FloorplanGraph) -> list[ToolCall]:
@@ -146,7 +169,7 @@ class DeleteRoomTask:
             ToolCall(
                 "add_room",
                 arguments,
-                f"The user wants a {_type_name(room)} at ({room.xy[0]}, {room.xy[1]}). I add the"
+                f"The user wants {_a_type_name(room)} at ({room.xy[0]}, {room.xy[1]}). I add the"
                 f" room first. It starts with no links, so I connect it afterwards.",
             )
         ]

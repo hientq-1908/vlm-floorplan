@@ -59,6 +59,13 @@ def test_reset_returns_the_damaged_plan_and_the_request() -> None:
     assert "a shared wall with r0 (bedroom)" in prompt
 
 
+def test_a_request_for_an_entry_uses_an() -> None:
+    env = FloorplanEditEnv()
+    prompt = env.reset(RECORD, DeleteRoomTask("r4"))
+    assert "Request: Add an entry at (" in prompt
+    assert env.solution()[0].reasoning.startswith("The user wants an entry at (")
+
+
 def test_the_target_stays_the_real_plan_while_the_damaged_plan_changes() -> None:
     env = FloorplanEditEnv()
     env.reset(RECORD, DeleteRoomTask("r1"))
