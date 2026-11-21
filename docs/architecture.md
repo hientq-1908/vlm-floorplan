@@ -70,7 +70,8 @@ There is at most one link per pair of rooms.
 
 **Exterior access is an `entrance` flag on a room, not a synthetic "outside" node.**
 The flag means "an exterior door opens into this room": every outside door counts, front, back and patio doors alike, so a plan can have several entrance rooms.
-Sources differ in what they mark: CubiCasa5K flags every exterior door, while ResPlan, MSD and Swiss Dwellings mark only the front door, so their plans have one entrance room.
+Sources differ in what they mark: CubiCasa5K flags every exterior door, while ResPlan, MSD and Swiss Dwellings mark only each apartment's front door.
+A ResPlan or Swiss Dwellings plan is one apartment, so it has one entrance room, while an MSD record holds several apartments and so has several.
 Outdoor spaces such as balconies and terraces are ordinary rooms of type `outdoor`.
 An outside node would be a node with no position and no polygon, which breaks the rule that every node is a point on the image.
 
@@ -153,15 +154,15 @@ Full run over 4,992 plans, plans with 0 / 1 / 2 / 3+ entrance rooms:
 
 | Split | Before | After |
 |---|---|---|
-| train | 1268 / 2391 / 345 / 190 | 23 / 1122 / 1532 / 1517 |
-| val | 126 / 230 / 30 / 14 | 4 / 124 / 130 / 142 |
-| test | 123 / 214 / 43 / 18 | 3 / 115 / 133 / 147 |
-| all | 1517 / 2835 / 418 / 222 | 30 / 1361 / 1795 / 1806 |
+| train | 1268 / 2391 / 345 / 190 | 24 / 1138 / 1522 / 1510 |
+| val | 126 / 230 / 30 / 14 | 5 / 124 / 129 / 142 |
+| test | 123 / 214 / 43 / 18 | 3 / 117 / 133 / 145 |
+| all | 1517 / 2835 / 418 / 222 | 32 / 1379 / 1784 / 1797 |
 
 Of the 1,517 plans with none, 1,490 had an external door onto an outdoor space.
 The rest were doors with both rooms on one side, doors drawn past the room outline, and plans with no External wall tag.
 Many plans now have several entrance rooms, because every exterior door counts (back and patio doors too), not only the front door.
-30 plans stay at none, because the source gives no usable door: a porch-to-yard door only (12), balcony doors only (7), a door onto an annex room (5), a door on a wall not tagged External (4), or no door (2).
+32 plans stay at none, because the source gives no usable door: a porch-to-yard door only (12), balcony doors only (7), a door onto an annex room (5), a door on a wall not tagged External (4), doors onto a glazed porch or terrace only (2), or no door (2).
 Same-side doors no longer create a door link between the two rooms (40 plans changed links).
 
 The tests do not use real CubiCasa5K data, because it is CC BY-NC.
