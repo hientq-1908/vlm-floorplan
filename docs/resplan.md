@@ -45,7 +45,7 @@ The result looks like the plots in ResPlan's own README.
 
 ### Room types
 
-Types come from `RESPLAN_TYPES` in `room_types.py`: living, kitchen, bedroom, bathroom, storage and stairs map to themselves, and a balcony becomes `outdoor`.
+Types come from `RESPLAN_TYPES` in `room_types.py`: living, kitchen, bedroom, bathroom, storage and stairs map to themselves, and a balcony becomes `terrace`.
 ResPlan merges corridors into `living` and does not say which part is which, so a `living` room can be a hallway too.
 We do not try to guess.
 Every `living` part of a plan is merged into one room, which is also what ResPlan's own graph does.

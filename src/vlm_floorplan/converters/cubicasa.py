@@ -9,7 +9,7 @@ pixels, where walls are about 15 px thick):
 - entrance: every exterior door (a door on a wall tagged External) flags the
   room inside it, front, back and patio doors alike. The room inside is the one
   the door touches alone, the best-overlap interior room when the door's other
-  neighbour is open air (outdoor, porch, terrace, car port; not a balcony,
+  neighbour is open air (porch, terrace, car port; not a balcony,
   loggia, glazed space or sun room), or the room on the inner face of the wall
   when both touched rooms lie on that face (such a door links nothing). A door
   that touches no room within 6 px is searched again within 20 px. On a plan
@@ -53,7 +53,7 @@ from vlm_floorplan.schema import ImageSize, LinkKind, RoomType
 DOOR_BUFFER_PX = 6.0
 DOOR_REACH_PX = 20.0
 DOOR_SIDE_PROBE_PX = 8.0
-DWELLING_OUTDOOR_WORDS = ("BALCONY", "PARV", "LOGGIA", "LASITETTU", "SUNROOM")
+DWELLING_TERRACE_WORDS = ("BALCONY", "PARV", "LOGGIA", "LASITETTU", "SUNROOM")
 OPENING_MAX_GAP_PX = 3.0
 WALL_MAX_GAP_PX = 30.0
 MIN_SHARED_PX = 20.0
@@ -136,14 +136,14 @@ def _opens_outside(floor: SourceFloor, door: SvgDoor, hits: list[tuple[float, in
 
 
 def _is_part_of_dwelling(room: SourceRoom) -> bool:
-    """Balconies, loggias, glazed spaces and sun rooms: outdoor types that are not outside."""
+    """Balconies, loggias, glazed spaces and sun rooms: terrace types that are not outside."""
     text = f"{room.source_type} {room.label or ''}".upper()
-    return any(word in text for word in DWELLING_OUTDOOR_WORDS)
+    return any(word in text for word in DWELLING_TERRACE_WORDS)
 
 
 def _is_open_air(room: SourceRoom) -> bool:
-    is_outdoor = room.type == RoomType.OUTDOOR or "CarPort" in room.source_type
-    return is_outdoor and not _is_part_of_dwelling(room)
+    is_open_air = room.type == RoomType.TERRACE or "CarPort" in room.source_type
+    return is_open_air and not _is_part_of_dwelling(room)
 
 
 def _mark_entrance(floor: SourceFloor, hits: list[tuple[float, int]]) -> bool:

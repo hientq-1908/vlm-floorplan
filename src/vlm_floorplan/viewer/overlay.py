@@ -33,7 +33,7 @@ TYPE_COLORS: Final[dict[RoomType, Color]] = {
     RoomType.ENTRY: (150, 90, 200),
     RoomType.STORAGE: (140, 100, 60),
     RoomType.UTILITY: (100, 130, 100),
-    RoomType.OUTDOOR: (60, 170, 80),
+    RoomType.TERRACE: (60, 170, 80),
     RoomType.GARAGE: (90, 90, 90),
     RoomType.STAIRS: (210, 100, 170),
     RoomType.OTHER: (60, 60, 60),

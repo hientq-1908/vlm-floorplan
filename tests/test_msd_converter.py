@@ -69,7 +69,7 @@ def test_rooms_get_coarse_types_and_keep_msd_name_as_source_type() -> None:
     rooms = _by_source(record)
     assert rooms["Corridor"].type == RoomType.ENTRY
     assert rooms["Livingroom"].type == RoomType.LIVING
-    assert rooms["Balcony"].type == RoomType.OUTDOOR
+    assert rooms["Balcony"].type == RoomType.TERRACE
     assert rooms["Stairs"].type == RoomType.STAIRS
     assert record.quality.unlabeled_fraction == 0.0
 
