@@ -26,6 +26,9 @@ This repository currently holds milestone M1:
 It also holds the code for milestone M2, the zero-shot baseline: evaluation metrics, a vLLM serving script and a ClearML job (`evaluation/`, `deploy/vllm/`, see `docs/evaluation.md`).
 The GPU run itself has not happened yet.
 
+The SFT stage 1 training code (text to graph, LoRA on Qwen3.5-4B) is in `training/` with its settings in `configs/sft_stage1.toml`, see `docs/sft-training.md`.
+It has a smoke mode and a ClearML launcher, and has not been run on the real model yet.
+
 Planned next: the zero-shot baseline run, perception fine-tuning, the editing agent, the app and retrieval.
 See the milestone list in `docs/architecture.md`.
 
@@ -42,7 +45,7 @@ Tests that hit a real server are skipped by default.
 Run them with `uv run pytest -m network` (the Zenodo one takes a few minutes).
 
 The heavy ML stack (torch, transformers, TRL, PEFT, ClearML) lives in a separate group.
-Only the training-format tests need it.
+Only the training tests need it.
 
 ```bash
 uv run --group ml pytest -m hf    # downloads the Qwen3.5-4B processor files (a few MB) once

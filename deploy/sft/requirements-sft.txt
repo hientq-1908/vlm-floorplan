@@ -1,0 +1,15 @@
+# Packages the ClearML agent installs for the SFT job. They are the pins of the `ml` group in
+# pyproject.toml (a test keeps the two in step), plus what `vlm_floorplan` itself imports.
+accelerate==1.16.0
+clearml==2.2.0
+datasets>=4.7.0
+num2words==0.5.14
+peft==0.21.3
+torch==2.14.0
+torchvision==0.29.0
+transformers==5.20.2
+trl==1.18.1
+pillow>=13.0.0
+pydantic>=2.14.3
+numpy>=2.4.6
+shapely>=2.2.0

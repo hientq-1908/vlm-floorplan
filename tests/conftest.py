@@ -4,6 +4,8 @@ Markers (declared in pyproject.toml):
     network  needs internet (dataset servers): skipped by default, run `pytest -m network`
     hf       needs the ml group and the HF processor: skips itself when unavailable;
              deselect explicitly with `pytest -m "not hf"`
+    gpu      needs a 24 GB GPU and the full model weights: skipped by default, run `pytest -m gpu`
+    slow     a few seconds or more (tiny-model training on the CPU)
 """
 
 from __future__ import annotations
@@ -29,3 +31,14 @@ def cubicasa_plan_dir(tmp_path: Path) -> Path:
 @pytest.fixture
 def cubicasa_record(cubicasa_plan_dir: Path) -> PlanRecord:
     return convert_plan(cubicasa_plan_dir, "cubicasa5k/colorful/1", split="train")
+
+
+@pytest.fixture(scope="session")
+def qwen_tokenizer():  # noqa: ANN201 - transformers is optional (the ml group)
+    """The Qwen3.5-4B tokenizer with its shipped template; skips without the ml group or Hub."""
+    transformers = pytest.importorskip("transformers")
+    pytest.importorskip("trl")
+    try:
+        return transformers.AutoTokenizer.from_pretrained("Qwen/Qwen3.5-4B")
+    except OSError as err:  # offline and not cached
+        pytest.skip(f"cannot load the Qwen3.5-4B tokenizer: {err}")

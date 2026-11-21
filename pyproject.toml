@@ -44,9 +44,11 @@ default-groups = ["dev"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # Network tests are slow (Zenodo) and opt-in: `pytest -m network`.
-addopts = "-ra --strict-markers -m 'not network'"
+addopts = "-ra --strict-markers -m 'not network and not gpu'"
 markers = [
     "network: needs internet access (dataset servers)",
+    "gpu: needs a 24 GB GPU and the full Qwen3.5-4B weights (about 9 GB download): opt-in, `pytest -m gpu`",
+    "slow: takes more than a few seconds (a tiny-model training run on the CPU)",
     "hf: needs the ML group and the Qwen3.5-4B processor files (downloaded once from the Hugging Face Hub, then cached)",
 ]
 
