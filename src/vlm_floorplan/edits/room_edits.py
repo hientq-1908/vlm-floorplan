@@ -1,4 +1,4 @@
-"""Handlers for the edits that change one room: add, move, delete, retype, rename, entrance.
+"""Handlers for the edits that change one room: add, move, delete, retype, rename, exterior door.
 
 Each handler takes a graph and an op and returns a `Change` or an `EditError`.
 Handlers check the rules that need the graph; `apply_op` validates the result afterwards.
@@ -15,10 +15,11 @@ from vlm_floorplan.edits.lookup import (
     unknown_room_error,
 )
 from vlm_floorplan.edits.ops import (
+    AddExteriorDoor,
     AddRoom,
     DeleteRoom,
     MoveRoom,
-    SetEntrance,
+    RemoveExteriorDoor,
     SetRoomLabel,
     SetRoomType,
 )
@@ -63,7 +64,6 @@ def add_room(graph: FloorplanGraph, op: AddRoom) -> Change | EditError:
         type=op.type,
         label=op.label,
         xy=(op.x, op.y),
-        entrance=op.entrance,
     )
     new_floor = Floor(floor=floor.floor, rooms=[*floor.rooms, room], links=floor.links)
     applied = op.model_copy(update={"room_id": room_id, "floor": floor.floor})
@@ -128,14 +128,23 @@ def set_room_label(graph: FloorplanGraph, op: SetRoomLabel) -> Change | EditErro
     return Change(new_graph, op, description)
 
 
-def set_entrance(graph: FloorplanGraph, op: SetEntrance) -> Change | EditError:
+def add_exterior_door(graph: FloorplanGraph, op: AddExteriorDoor) -> Change | EditError:
     found = locate_room(graph, op.room_id)
     if found is None:
         return unknown_room_error(graph, op.room_id)
     floor_index, room = found
-    if room.entrance == op.entrance:
-        state = "already is" if op.entrance else "already is not"
-        return no_change(f"Room {room.id} {state} an entrance.", room.id)
-    new_graph = swap_room(graph, floor_index, rebuilt_room(room, entrance=op.entrance))
-    verb = "marked" if op.entrance else "unmarked"
-    return Change(new_graph, op, f"{verb} {room.id} as an entrance")
+    if room.entrance:
+        return no_change(f"Room {room.id} already has a door to the outside.", room.id)
+    new_graph = swap_room(graph, floor_index, rebuilt_room(room, entrance=True))
+    return Change(new_graph, op, f"added a door to the outside in {room.id}")
+
+
+def remove_exterior_door(graph: FloorplanGraph, op: RemoveExteriorDoor) -> Change | EditError:
+    found = locate_room(graph, op.room_id)
+    if found is None:
+        return unknown_room_error(graph, op.room_id)
+    floor_index, room = found
+    if not room.entrance:
+        return no_change(f"Room {room.id} has no door to the outside.", room.id)
+    new_graph = swap_room(graph, floor_index, rebuilt_room(room, entrance=False))
+    return Change(new_graph, op, f"removed the door to the outside from {room.id}")

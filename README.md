@@ -20,6 +20,7 @@ This repository currently holds milestone M1:
 - a ResPlan converter, renderer and build script (`resplan/`),
 - an overlay viewer and an HTML contact sheet (`viewer/`),
 - typed graph edit operations, the graph validator and edit history (`edits/`, see `docs/edit-operations.md`),
+- the agent's tool set and a repair environment for tool-use data and RL (`agent/`, see `docs/tools.md`),
 - tests, including a CPU check of the training format.
 
 It also holds the code for milestone M2, the zero-shot baseline: evaluation metrics, a vLLM serving script and a ClearML job (`evaluation/`, `deploy/vllm/`, see `docs/evaluation.md`).
@@ -124,6 +125,7 @@ Design notes and the takedown procedure are in `docs/resplan.md`.
 | `src/vlm_floorplan/resplan/` | ResPlan fetch, plan-to-graph converter, PNG renderer and build script. |
 | `src/vlm_floorplan/viewer/` | The overlay drawing and the contact sheet. |
 | `src/vlm_floorplan/edits/` | Typed edit ops, `apply_op`, the graph validator, tool schemas, text summaries and edit history. |
+| `src/vlm_floorplan/agent/` | The eleven agent tools (ten edits and `new_plan`), `FloorplanEditEnv`, corruption tasks and the TRL episode builder (`docs/tools.md`). |
 | `src/vlm_floorplan/evaluation/` | The evaluation harness, parser and metrics, and the ClearML baseline launcher (`docs/evaluation.md`). |
 | `deploy/vllm/` | The vLLM serving script for the baseline job. |
 | `tests/` | Unit tests on synthetic fixtures, plus the training-format tests. |

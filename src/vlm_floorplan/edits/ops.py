@@ -66,9 +66,6 @@ class AddRoom(_Op):
         default=None,
         description="Floor number. Only needed when the plan has more than one floor.",
     )
-    entrance: bool = Field(
-        default=False, description="True if an exterior door opens into this room."
-    )
     room_id: RoomId | None = Field(
         default=None,
         description="Leave out: the next free id is assigned. Replays and tests set it.",
@@ -150,12 +147,18 @@ class SetLinkKind(_Op):
     kind: LinkKind = Field(description="The new kind: door, opening, or wall.")
 
 
-class SetEntrance(_Op):
-    """Mark whether an exterior door opens into a room (the plan's entrance)."""
+class AddExteriorDoor(_Op):
+    """Mark that a door to the outside opens into a room (it becomes an entrance of the plan)."""
 
-    op: Literal["set_entrance"] = "set_entrance"
-    room_id: RoomId = Field(description="The room to change.")
-    entrance: bool = Field(description="True if the front door opens into this room.")
+    op: Literal["add_exterior_door"] = "add_exterior_door"
+    room_id: RoomId = Field(description="The room the outside door opens into.")
+
+
+class RemoveExteriorDoor(_Op):
+    """Remove the door to the outside from a room (it stops being an entrance of the plan)."""
+
+    op: Literal["remove_exterior_door"] = "remove_exterior_door"
+    room_id: RoomId = Field(description="The room that has the outside door.")
 
 
 EditOp = Annotated[
@@ -167,7 +170,8 @@ EditOp = Annotated[
     | AddLink
     | RemoveLink
     | SetLinkKind
-    | SetEntrance,
+    | AddExteriorDoor
+    | RemoveExteriorDoor,
     Field(discriminator="op"),
 ]
 
@@ -182,7 +186,8 @@ OP_CLASSES: dict[str, type[_Op]] = {
         AddLink,
         RemoveLink,
         SetLinkKind,
-        SetEntrance,
+        AddExteriorDoor,
+        RemoveExteriorDoor,
     )
 }
 """Op name to class, in the order tools are listed to the model."""
@@ -206,13 +211,14 @@ __all__ = [
     "EDIT_OP_ADAPTER",
     "MAX_LABEL_LENGTH",
     "OP_CLASSES",
+    "AddExteriorDoor",
     "AddLink",
     "AddRoom",
     "DeleteRoom",
     "EditOp",
     "MoveRoom",
+    "RemoveExteriorDoor",
     "RemoveLink",
-    "SetEntrance",
     "SetLinkKind",
     "SetRoomLabel",
     "SetRoomType",

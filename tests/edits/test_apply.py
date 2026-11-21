@@ -3,13 +3,14 @@ from __future__ import annotations
 import pytest
 
 from vlm_floorplan.edits import (
+    AddExteriorDoor,
     AddLink,
     AddRoom,
     DeleteRoom,
     EditErrorCode,
     MoveRoom,
+    RemoveExteriorDoor,
     RemoveLink,
-    SetEntrance,
     SetLinkKind,
     SetRoomLabel,
     SetRoomType,
@@ -74,10 +75,10 @@ def test_add_room_with_an_id_in_use_is_rejected() -> None:
     assert rejected(sample_graph(), op).error.code == EditErrorCode.ID_IN_USE
 
 
-def test_add_room_keeps_the_entrance() -> None:
-    op = AddRoom(type="entry", x=50, y=50, floor=1, entrance=True)
+def test_add_room_has_no_exterior_door() -> None:
+    op = AddRoom(type="entry", x=50, y=50, floor=1)
     new = room(applied(sample_graph(), op).graph, "r7")
-    assert new.entrance
+    assert not new.entrance
 
 
 def test_add_room_warns_that_the_new_room_is_isolated() -> None:
@@ -157,7 +158,7 @@ def test_delete_unknown_room_is_rejected() -> None:
     )
 
 
-# --- set_room_type / set_room_label / set_entrance --------------------------------------
+# --- set_room_type / set_room_label / exterior doors --------------------------------------
 
 
 def test_set_room_type() -> None:
@@ -186,17 +187,23 @@ def test_set_room_label_to_the_current_value_is_no_change(room_id: str, label: s
     )
 
 
-def test_set_entrance_on_and_off() -> None:
-    on = applied(sample_graph(), SetEntrance(room_id="r3", entrance=True))
+def test_add_then_remove_an_exterior_door() -> None:
+    on = applied(sample_graph(), AddExteriorDoor(room_id="r3"))
     assert room(on.graph, "r3").entrance
-    off = applied(on.graph, SetEntrance(room_id="r3", entrance=False))
+    off = applied(on.graph, RemoveExteriorDoor(room_id="r3"))
     assert not room(off.graph, "r3").entrance
 
 
-def test_set_entrance_to_the_current_value_is_no_change() -> None:
-    assert rejected(sample_graph(), SetEntrance(room_id="r0", entrance=True)).error.code == (
-        EditErrorCode.NO_CHANGE
-    )
+def test_add_exterior_door_to_a_room_that_has_one_is_rejected() -> None:
+    result = rejected(sample_graph(), AddExteriorDoor(room_id="r0"))
+    assert result.error.code == EditErrorCode.NO_CHANGE
+    assert "already has a door to the outside" in result.error.message
+
+
+def test_remove_exterior_door_from_a_room_without_one_is_rejected() -> None:
+    result = rejected(sample_graph(), RemoveExteriorDoor(room_id="r3"))
+    assert result.error.code == EditErrorCode.NO_CHANGE
+    assert "has no door to the outside" in result.error.message
 
 
 # --- add_link ---------------------------------------------------------------------------

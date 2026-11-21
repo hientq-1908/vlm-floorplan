@@ -40,6 +40,7 @@ class EditErrorCode(StrEnum):
     NOT_ADJACENT = "not_adjacent"  # a door or opening between rooms that are not linked
     NO_CHANGE = "no_change"  # the edit would leave the graph exactly as it is
     INVALID_RESULT = "invalid_result"  # safety net: the edit would break a graph rule
+    INVALID_PLAN = "invalid_plan"  # new_plan: the plan text is not a valid, non-empty plan
 
 
 @dataclass(frozen=True)

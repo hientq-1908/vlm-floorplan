@@ -27,7 +27,7 @@ def test_there_is_one_tool_per_op_named_after_it() -> None:
     assert sorted(names) == sorted(
         [
             "add_room", "move_room", "delete_room", "set_room_type", "set_room_label",
-            "add_link", "remove_link", "set_link_kind", "set_entrance",
+            "add_link", "remove_link", "set_link_kind", "add_exterior_door", "remove_exterior_door",
         ]
     )  # fmt: skip
 
@@ -68,7 +68,7 @@ def test_required_lists_only_arguments_without_defaults() -> None:
     }
     assert required["add_room"] == {"type", "x", "y"}
     assert required["add_link"] == {"room_a", "room_b", "kind"}
-    assert required["set_entrance"] == {"room_id", "entrance"}
+    assert required["add_exterior_door"] == {"room_id"}
     assert required["set_room_label"] == {"room_id", "label"}
 
 
@@ -106,7 +106,7 @@ def test_unknown_tool_lists_the_valid_ones() -> None:
         ("move_room", {"room_id": "kitchen", "x": 5, "y": 5}, "argument 'room_id'"),
         ("move_room", {"room_id": "r1", "x": 5, "y": 5, "z": 1}, "unknown argument 'z'"),
         ("add_link", {"room_a": "r1", "room_b": "r2", "kind": "window"}, "argument 'kind'"),
-        ("set_entrance", {"room_id": "r1", "entrance": "maybe"}, "argument 'entrance'"),
+        ("add_exterior_door", {"room_id": "r1", "entrance": True}, "unknown argument 'entrance'"),
         ("add_room", {"type": "kitchen", "x": 5, "y": 5, "x1": 1}, "unknown argument 'x1'"),
     ],
 )
