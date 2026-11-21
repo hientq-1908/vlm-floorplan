@@ -53,7 +53,8 @@ That is why `PlanRecord` keeps the room polygons even though the model only outp
 
 **A room has a size, the radius of a circle with its area; the plan has an exterior wall.**
 `size` (1 to 500, on the same grid as `xy`) tells the model how big a room is without a box and without a metre scale, so it works for every source.
-It is optional in the graph, because the converters do not write it yet, but the model-facing forms carry it: the plan text, `new_plan` and `add_room`, and `set_room_size` changes it.
+It is optional in the graph, because the converters do not write it yet, but the model-facing forms carry it: the plan text, `new_plan` and `add_room` require it, and `set_room_size` changes it.
+So tasks are only built from plans whose rooms have the sizes they need.
 `exterior_wall` is the building outline as a polygon of grid points, shown to the model on the second line of the plan text and never written by it.
 Indoor rooms go inside it and outdoor rooms outside it, against it.
 Edits and `new_plan` keep it.

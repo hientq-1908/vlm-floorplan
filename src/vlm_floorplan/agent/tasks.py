@@ -154,8 +154,8 @@ class DeleteRoomTask:
     def request(self, plan: FloorplanGraph) -> str:
         room = _room(plan, self.room_id)
         label = f" called '{room.label}'" if room.label else ""
-        text = f"Add {_a_type_name(room)}{label} at ({room.xy[0]}, {room.xy[1]})."
-        return text + self._connections(plan)
+        place = f"at ({room.xy[0]}, {room.xy[1]}), size {room.size}"
+        return f"Add {_a_type_name(room)}{label} {place}." + self._connections(plan)
 
     def solve(self, plan: FloorplanGraph, damaged: FloorplanGraph) -> list[ToolCall]:
         room = _room(plan, self.room_id)
@@ -302,5 +302,7 @@ def candidate_tasks(record: PlanRecord, kind: str) -> list[Task]:
             if link.kind != LinkKind.WALL
         ]
     if kind == "draw_plan":
-        return [DrawPlanTask()] if 0 < len(plan.rooms()) <= MAX_DRAW_ROOMS else []
+        rooms = plan.rooms()
+        has_sizes = all(room.size is not None for room in rooms)  # new_plan needs every size
+        return [DrawPlanTask()] if has_sizes and 0 < len(rooms) <= MAX_DRAW_ROOMS else []
     raise ValueError(f"unknown task kind {kind!r}; kinds are {', '.join(TASK_KINDS)}")
