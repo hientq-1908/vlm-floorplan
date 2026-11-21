@@ -39,7 +39,8 @@ def plan_score(final: FloorplanGraph | None, target: PlanRecord) -> float:
     The mean of four scores, each skipped when neither the target nor the final plan
     gives it anything to measure:
     room F1, room-type accuracy among matched rooms, link F1 where a link only counts
-    when its kind (door, opening, wall) is right too, and exterior-door F1.
+    when its kind (door, opening, wall) is right too, and exterior-door F1 over every
+    room, so a missing real entrance room also counts as a missed exterior door.
     """
     metrics = evaluate_plan(final, target)
     if not metrics.valid:
