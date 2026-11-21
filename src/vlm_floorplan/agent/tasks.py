@@ -160,11 +160,15 @@ class DeleteRoomTask:
     def solve(self, plan: FloorplanGraph, damaged: FloorplanGraph) -> list[ToolCall]:
         room = _room(plan, self.room_id)
         new_id = next_room_id(damaged)
-        arguments: dict[str, Any] = {"type": room.type.value, "x": room.xy[0], "y": room.xy[1]}
+        assert room.size is not None, "candidate_tasks only offers rooms that have a size"
+        arguments: dict[str, Any] = {
+            "type": room.type.value,
+            "x": room.xy[0],
+            "y": room.xy[1],
+            "size": room.size,
+        }
         if room.label:
             arguments["label"] = room.label
-        if len(plan.floors) > 1:
-            arguments["floor"] = _floor_of(plan, self.room_id).floor
         calls = [
             ToolCall(
                 "add_room",
@@ -257,7 +261,7 @@ class DrawPlanTask:
 
     def corrupt(self, plan: FloorplanGraph) -> FloorplanGraph:
         floors = [Floor(floor=floor.floor, rooms=[], links=[]) for floor in plan.floors]
-        return FloorplanGraph(floors=floors, image=plan.image)
+        return FloorplanGraph(floors=floors, image=plan.image, exterior_wall=plan.exterior_wall)
 
     def request(self, plan: FloorplanGraph) -> str:
         return f"Draw this plan from scratch:\n{summarize_graph(plan)}"
@@ -278,12 +282,15 @@ TASK_KINDS = ("delete_room", "close_door", "draw_plan")
 def candidate_tasks(record: PlanRecord, kind: str) -> list[Task]:
     """Every task of this kind that makes sense on this plan, in plan order."""
     plan = record.graph
+    if len(plan.floors) != 1:  # the model-facing text and tools are single-floor
+        return []
     if kind == "delete_room":
         linked = {end for floor in plan.floors for link in floor.links for end in (link.a, link.b)}
         return [
             DeleteRoomTask(room.id)
             for room in plan.rooms()
             if room.id in linked
+            and room.size is not None  # add_room needs a size to put the room back
             and room.type.value != "unknown"
             and len(room.label or "") <= MAX_LABEL_LENGTH
         ]

@@ -47,7 +47,7 @@ def test_tool_messages_carry_the_real_environment_response() -> None:
     episode = build_episode(RECORD, DeleteRoomTask("r1"))
     tools = [m for m in episode["messages"] if m["role"] == "tool"]
     assert tools[0]["name"] == "add_room"
-    assert tools[0]["content"].startswith("OK: added bathroom room r6 at (500, 200)")
+    assert tools[0]["content"].startswith("OK: added bathroom room r6 at (500, 200).\nWarning")
     assert all(m["content"].startswith("OK:") for m in tools)
 
 
@@ -62,13 +62,13 @@ def test_the_draw_plan_episode_is_one_new_plan_call() -> None:
     episode = build_episode(RECORD, DrawPlanTask())
     calls = [m["tool_calls"][0]["function"] for m in episode["messages"] if m.get("tool_calls")]
     assert [call["name"] for call in calls] == ["new_plan"]
-    assert json.loads(calls[0]["arguments"]["plan"])["floors"]
+    assert set(json.loads(calls[0]["arguments"]["plan"])) == {"rooms", "links"}
     assert episode["reward"] == pytest.approx(1.0)
 
 
-def test_the_record_carries_all_eleven_tools_and_is_json() -> None:
+def test_the_record_carries_all_twelve_tools_and_is_json() -> None:
     episode = build_episode(RECORD, DeleteRoomTask("r1"))
-    assert len(episode["tools"]) == 11
+    assert len(episode["tools"]) == 12
     assert json.loads(json.dumps(episode)) == episode
 
 

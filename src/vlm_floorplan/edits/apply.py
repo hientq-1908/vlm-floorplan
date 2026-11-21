@@ -35,6 +35,7 @@ from vlm_floorplan.edits.ops import (
     RemoveLink,
     SetLinkKind,
     SetRoomLabel,
+    SetRoomSize,
     SetRoomType,
 )
 from vlm_floorplan.edits.outcome import (
@@ -50,6 +51,7 @@ from vlm_floorplan.schema import FloorplanGraph
 _HANDLERS: dict[type, Callable[[FloorplanGraph, Any], Change | EditError]] = {
     AddRoom: room_edits.add_room,
     MoveRoom: room_edits.move_room,
+    SetRoomSize: room_edits.set_room_size,
     DeleteRoom: room_edits.delete_room,
     SetRoomType: room_edits.set_room_type,
     SetRoomLabel: room_edits.set_room_label,

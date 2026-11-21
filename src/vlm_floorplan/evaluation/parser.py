@@ -30,7 +30,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from vlm_floorplan.compact import from_compact
+from vlm_floorplan.evaluation.floors_json import from_floors_json
 from vlm_floorplan.schema import FloorplanGraph, ImageSize
 
 THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL)
@@ -167,7 +167,7 @@ def _to_graph(obj: Any, image: ImageSize) -> tuple[FloorplanGraph, bool]:
         }
         lenient = True
     try:
-        return from_compact(json.dumps(obj), image), lenient
+        return from_floors_json(json.dumps(obj), image), lenient
     except ValueError as compact_err:
         # Links as {"a":..,"b":..,"kind":..} objects instead of triples: the verbose form.
         try:

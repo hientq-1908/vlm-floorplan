@@ -8,10 +8,10 @@ import pytest
 from helpers_eval import gt_record
 from PIL import Image
 
-from vlm_floorplan.compact import to_compact
 from vlm_floorplan.evaluation.cli import main as cli_main
 from vlm_floorplan.evaluation.client import ApiError, ChatResponse, parse_chat_response
 from vlm_floorplan.evaluation.config import EvalConfig
+from vlm_floorplan.evaluation.floors_json import to_floors_json
 from vlm_floorplan.evaluation.harness import collect_outputs
 from vlm_floorplan.evaluation.run_dir import verify_manifest
 from vlm_floorplan.evaluation.scoring import score_run
@@ -63,7 +63,7 @@ def config_for(split: Path, **overrides: Any) -> EvalConfig:
 
 def test_run_records_inputs_outputs_and_metrics(split: Path, tmp_path: Path) -> None:
     config = config_for(split, max_long_side=768)
-    client = FakeClient([reply(to_compact(gt_record().graph))])
+    client = FakeClient([reply(to_floors_json(gt_record().graph))])
     run_dir = tmp_path / "runs" / "test-run"
 
     records = collect_outputs(config, client, run_dir)
@@ -80,7 +80,7 @@ def test_run_records_inputs_outputs_and_metrics(split: Path, tmp_path: Path) -> 
     assert inputs[0]["sent_size"] == [768, 384]
     assert "base64" not in json.dumps(inputs[0])  # the image is stored as a file, not inline
     outputs = [json.loads(line) for line in (run_dir / "outputs.jsonl").read_text().splitlines()]
-    assert outputs[0]["content"] == to_compact(gt_record().graph)
+    assert outputs[0]["content"] == to_floors_json(gt_record().graph)
     assert outputs[0]["reasoning"] == "some thinking"
     assert (run_dir / "prompt.txt").read_text().startswith("You are given a floorplan image")
 
@@ -138,7 +138,7 @@ def test_resume_retries_failed_plans_and_scores_only_the_retry(split: Path, tmp_
     run_dir = tmp_path / "run"
     config = config_for(split)
     collect_outputs(config, FakeClient([ApiError("server restarting")]), run_dir)
-    retry = FakeClient([reply(to_compact(gt_record().graph))])
+    retry = FakeClient([reply(to_floors_json(gt_record().graph))])
     records = collect_outputs(config, retry, run_dir)
     assert len(retry.requests) == 1
     assert len((run_dir / "inputs.jsonl").read_text().splitlines()) == 1
@@ -154,7 +154,7 @@ def test_unreadable_image_is_recorded_per_plan_not_fatal(split: Path, tmp_path: 
     with split.open("a") as handle:
         handle.write(second.model_dump_json() + "\n")
     run_dir = tmp_path / "run"
-    client = FakeClient([reply(to_compact(gt_record().graph))])
+    client = FakeClient([reply(to_floors_json(gt_record().graph))])
     records = collect_outputs(config_for(split), client, run_dir)
     summary = score_run(run_dir, records)
     assert len(client.requests) == 1
@@ -182,7 +182,7 @@ def test_resume_without_limit_lets_rescore_cover_every_plan(split: Path, tmp_pat
     with split.open("a") as handle:
         handle.write(second.model_dump_json() + "\n")
     out_dir = tmp_path / "runs"
-    answer = reply(to_compact(gt_record().graph))
+    answer = reply(to_floors_json(gt_record().graph))
     collect_outputs(config_for(split, limit=1), FakeClient([answer]), out_dir / "test-run")
     collect_outputs(config_for(split), FakeClient([answer]), out_dir / "test-run")
     assert cli_main(["rescore", str(out_dir / "test-run")]) == 0
@@ -195,7 +195,7 @@ def test_rescore_split_override_finds_a_moved_split(
     split: Path, tmp_path: Path, point_at_dir: bool
 ) -> None:
     run_dir = tmp_path / "runs" / "test-run"
-    answer = reply(to_compact(gt_record().graph))
+    answer = reply(to_floors_json(gt_record().graph))
     gone = tmp_path / "agent-tmp"
     gone.mkdir()
     agent_split = gone / "split.jsonl"
@@ -216,7 +216,9 @@ def test_rescore_split_override_finds_a_moved_split(
 def test_rescoring_uses_saved_outputs_only(split: Path, tmp_path: Path) -> None:
     run_dir = tmp_path / "run"
     config = config_for(split)
-    records = collect_outputs(config, FakeClient([reply(to_compact(gt_record().graph))]), run_dir)
+    records = collect_outputs(
+        config, FakeClient([reply(to_floors_json(gt_record().graph))]), run_dir
+    )
     first = score_run(run_dir, records)
     (run_dir / "metrics.json").unlink()
     assert score_run(run_dir, records)["overall"] == first["overall"]

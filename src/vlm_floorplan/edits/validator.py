@@ -107,7 +107,7 @@ def _check_floor(floor: Floor, floor_of: dict[str, int]) -> list[Issue]:
     here = {room.id for room in floor.rooms}
     seen_pairs: set[frozenset[str]] = set()
     for link in floor.links:
-        name = f"link {link.a}-{link.b} on floor {floor.floor}"
+        name = f"link {link.a}-{link.b}"
         if link.a == link.b:
             issues.append(_error(IssueCode.SELF_LINK, f"{name} connects a room to itself", link.a))
             continue
@@ -137,7 +137,7 @@ def _check_floor(floor: Floor, floor_of: dict[str, int]) -> list[Issue]:
             issues.append(
                 _error(
                     IssueCode.DUPLICATE_LINK,
-                    f"{link.a} and {link.b} are linked more than once on floor {floor.floor}",
+                    f"{link.a} and {link.b} are linked more than once",
                     link.a,
                     link.b,
                 )
@@ -181,7 +181,7 @@ def _warnings(graph: FloorplanGraph) -> list[Issue]:
                 issues.append(
                     _warning(
                         IssueCode.ISOLATED_ROOM,
-                        f"room {room.id} has no links to other rooms on floor {floor.floor}",
+                        f"room {room.id} has no links to other rooms",
                         room.id,
                     )
                 )

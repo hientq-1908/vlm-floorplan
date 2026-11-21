@@ -27,6 +27,7 @@ from vlm_floorplan.edits import (
     RemoveLink,
     SetLinkKind,
     SetRoomLabel,
+    SetRoomSize,
     SetRoomType,
     apply_op,
     dump_ops,
@@ -35,9 +36,9 @@ from vlm_floorplan.edits import (
     replay,
     validate_graph,
 )
-from vlm_floorplan.schema import GRID_MAX, FloorplanGraph, LinkKind, RoomType
+from vlm_floorplan.schema import GRID_MAX, MAX_ROOM_SIZE, FloorplanGraph, LinkKind, RoomType
 
-from .helpers import sample_graph
+from .helpers import single_floor_graph
 
 SEEDS = range(40)
 STEPS = 60
@@ -46,7 +47,6 @@ LABELS = ["", "Hall", "Guest room", "OH", "  padded  "]
 
 def random_op(rng: random.Random, graph: FloorplanGraph) -> EditOp:
     ids = [room.id for room in graph.rooms()]
-    floors = [floor.floor for floor in graph.floors]
 
     def pick() -> str:
         # Mostly live ids, sometimes a stranger.
@@ -55,14 +55,20 @@ def random_op(rng: random.Random, graph: FloorplanGraph) -> EditOp:
     def coord() -> int:
         return rng.randint(0, GRID_MAX)
 
+    def size() -> int:
+        return rng.randint(1, MAX_ROOM_SIZE)
+
     kind = rng.choice(list(LinkKind))
     makers = [
+        lambda: AddRoom(type=rng.choice(list(RoomType)), x=coord(), y=coord(), size=size()),
         lambda: AddRoom(
-            type=rng.choice(list(RoomType)), x=coord(), y=coord(), floor=rng.choice(floors)
+            type=rng.choice(list(RoomType)),
+            x=coord(),
+            y=coord(),
+            size=size(),
+            label=rng.choice(LABELS),
         ),
-        lambda: AddRoom(
-            type=rng.choice(list(RoomType)), x=coord(), y=coord(), label=rng.choice(LABELS)
-        ),
+        lambda: SetRoomSize(room_id=pick(), size=size()),
         lambda: MoveRoom(room_id=pick(), x=coord(), y=coord()),
         lambda: DeleteRoom(room_id=pick()),
         lambda: SetRoomType(room_id=pick(), type=rng.choice(list(RoomType))),
@@ -78,7 +84,7 @@ def random_op(rng: random.Random, graph: FloorplanGraph) -> EditOp:
 
 def run(seed: int) -> tuple[EditHistory, list[tuple[FloorplanGraph, EditApplied | EditRejected]]]:
     rng = random.Random(seed)
-    history = EditHistory(sample_graph())
+    history = EditHistory(single_floor_graph())
     trace = []
     for _ in range(STEPS):
         before = history.graph
@@ -93,7 +99,12 @@ def test_every_graph_along_a_random_run_is_valid(seed: int) -> None:
         if isinstance(outcome, EditApplied):
             assert validate_graph(outcome.graph).is_valid, (seed, outcome.op)
             assert FloorplanGraph.model_validate(outcome.graph.model_dump()) == outcome.graph
-            assert from_compact(to_compact(outcome.graph), outcome.graph.image) == outcome.graph
+            assert (
+                from_compact(
+                    to_compact(outcome.graph), outcome.graph.image, outcome.graph.exterior_wall
+                )
+                == outcome.graph
+            )
             assert outcome.graph != before  # applied edits are never no-ops
 
 
@@ -153,8 +164,8 @@ def test_add_link_only_ever_adds_a_wall_between_unlinked_rooms(seed: int) -> Non
 @pytest.mark.parametrize("seed", SEEDS[:10])
 def test_the_text_for_the_model_is_always_produced(seed: int) -> None:
     _, trace = run(seed)
-    for _, outcome in trace:
-        text = format_edit_outcome(outcome)
+    for before, outcome in trace:
+        text = format_edit_outcome(outcome, before)
         assert text.startswith("OK: " if isinstance(outcome, EditApplied) else "REJECTED (")
 
 
@@ -166,5 +177,5 @@ def test_the_random_runs_exercise_both_outcomes_and_every_op_kind() -> None:
                 applied_ops.add(type(outcome.op).__name__)
             else:
                 rejected_codes.add(outcome.error.code)
-    assert len(applied_ops) == 10
+    assert len(applied_ops) == 11
     assert len(rejected_codes) >= 6
