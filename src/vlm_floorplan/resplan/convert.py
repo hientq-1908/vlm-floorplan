@@ -78,6 +78,5 @@ def _room(
         id=room_id,
         type=RESPLAN_TYPES[shape.layer],
         xy=point,
-        bbox=view.grid.bbox(shape.geometry),
         entrance=entrance,
     )

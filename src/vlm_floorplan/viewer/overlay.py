@@ -3,7 +3,7 @@
 This is the main way to check a converter by eye:
 
 - each room is a dot at its `xy` point, colored by room type and captioned with
-  its id and type (hollow grey for `unknown`), plus a thin box if it has a `bbox`;
+  its id and type (hollow grey for `unknown`);
 - each link is a line between the two room points, styled by kind:
   doors are thick orange lines, openings are dashed blue, walls are thin dotted grey;
 - a room with an exterior door gets a green ring.
@@ -123,9 +123,6 @@ def _draw_room(
 ) -> None:
     x, y = _to_pixels(room, size)
     color = TYPE_COLORS[room.type]
-    if room.bbox is not None:
-        x1, y1, x2, y2 = (v * s / GRID_MAX for v, s in zip(room.bbox, size * 2, strict=True))
-        draw.rectangle([x1, y1, x2, y2], outline=color, width=max(1, round(0.2 * scale)))
     radius = 1.6 * scale
     if room.entrance:
         ring = radius + 1.2 * scale

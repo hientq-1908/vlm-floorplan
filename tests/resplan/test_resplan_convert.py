@@ -110,8 +110,7 @@ def test_grid_y_points_down_like_the_image(plan: dict[str, Any]) -> None:
 
 def test_coordinates_stay_on_the_grid(plan: dict[str, Any]) -> None:
     for room in convert_plan(plan).graph.rooms():
-        assert room.bbox is not None
-        assert all(0 <= value <= GRID_MAX for value in (*room.xy, *room.bbox))
+        assert all(0 <= value <= GRID_MAX for value in room.xy)
 
 
 def test_ids_follow_reading_order(plan: dict[str, Any]) -> None:

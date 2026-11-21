@@ -8,7 +8,7 @@ part, so both datasets produce graphs with the same conventions:
   continuing across floors, so the model sees a predictable order;
 - each pair of rooms gets at most one link, the strongest one found
   (door beats opening, opening beats wall);
-- points, boxes and polygons are moved into the 0-1000 grid.
+- points and polygons are moved into the 0-1000 grid.
 """
 
 from __future__ import annotations
@@ -82,7 +82,6 @@ def _assemble_floor(
                 type=room.type,
                 label=room.label,
                 xy=points[index],
-                bbox=frame.bbox(room.geometry),
                 entrance=room.entrance,
             )
         )

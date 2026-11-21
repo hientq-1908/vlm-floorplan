@@ -1,6 +1,6 @@
 """Match predicted rooms to ground-truth rooms.
 
-The model only outputs a point per room, so there is no box or polygon to compute an
+The model only outputs a point per room, so there is no polygon to compute an
 IoU from. Instead a predicted room is matched to the ground-truth room whose polygon
 contains its point. That needs no tuning and is easy to explain: "the point landed
 inside the kitchen".

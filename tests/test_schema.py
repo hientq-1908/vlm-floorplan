@@ -86,12 +86,11 @@ def test_room_id_format_is_enforced(room_id: str) -> None:
         room(room_id)
 
 
-def test_bbox_must_be_ordered_and_contain_the_point() -> None:
-    with pytest.raises(ValidationError, match="x1<=x2"):
-        room("r0", 100, 100, bbox=(200, 0, 50, 200))
-    with pytest.raises(ValidationError, match="outside its bbox"):
-        room("r0", 100, 100, bbox=(200, 200, 300, 300))
-    assert room("r0", 100, 100, bbox=(50, 50, 200, 200)).bbox == (50, 50, 200, 200)
+def test_a_room_is_a_point_and_rejects_a_bbox_from_an_old_record() -> None:
+    assert "bbox" not in Room.model_fields
+    old_record = {"id": "r0", "type": "living", "xy": [100, 100], "bbox": [50, 50, 200, 200]}
+    with pytest.raises(ValidationError, match="bbox"):
+        Room.model_validate(old_record)
 
 
 def test_unknown_room_type_is_rejected_but_unknown_is_a_member() -> None:

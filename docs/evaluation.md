@@ -63,7 +63,7 @@ Images are encoded as PNG, because thin lines and small labels are what the mode
 
 ### Rooms are matched by point-in-polygon
 
-The model outputs a point per room, not a box, so there is no IoU to compute.
+The model outputs a point per room, so there is no box or polygon of its own to compute an IoU from.
 A predicted room matches the ground-truth room whose polygon contains its point.
 This needs no threshold and is easy to explain: the point landed inside the kitchen.
 

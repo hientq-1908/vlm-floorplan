@@ -68,9 +68,7 @@ def test_duplicate_room_ids_and_floor_numbers() -> None:
 
 
 def test_coordinates_out_of_range() -> None:
-    bad = Room.model_construct(
-        id="r0", type=RoomType.LIVING, xy=(1001, -1), bbox=None, entrance=False
-    )
+    bad = Room.model_construct(id="r0", type=RoomType.LIVING, xy=(1001, -1), entrance=False)
     issues = validate_graph(raw_graph([raw_floor(1, [bad])])).errors
     assert [i.code for i in issues] == [IssueCode.COORD_OUT_OF_RANGE] * 2
     assert "x=1001" in issues[0].message
@@ -78,9 +76,7 @@ def test_coordinates_out_of_range() -> None:
 
 
 def test_malformed_room_id() -> None:
-    bad = Room.model_construct(
-        id="kitchen", type=RoomType.LIVING, xy=(1, 1), bbox=None, entrance=False
-    )
+    bad = Room.model_construct(id="kitchen", type=RoomType.LIVING, xy=(1, 1), entrance=False)
     assert codes(raw_graph([raw_floor(1, [bad])])) == {IssueCode.BAD_ROOM_ID}
 
 
