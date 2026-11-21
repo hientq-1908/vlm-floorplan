@@ -32,7 +32,10 @@ def _kinds(record: PlanRecord) -> dict[frozenset[str], LinkKind]:
 
 
 def test_parse_reads_nodes_and_edges_without_importing_networkx_or_torch() -> None:
-    graph = parse_msd_graph(apartment_pickle())
+    watched = ("networkx", "torch")
+    before = {name: sys.modules.get(name) for name in watched}  # torch may be loaded already
+    pickled = apartment_pickle()
+    graph = parse_msd_graph(pickled)
 
     assert set(graph.nodes) == set(APARTMENT_ROOMS)
     assert graph.nodes[1].room_type == 0
@@ -40,7 +43,7 @@ def test_parse_reads_nodes_and_edges_without_importing_networkx_or_torch() -> No
     assert {(e.a, e.b, e.connectivity) for e in graph.edges} == {
         (min(a, b), max(a, b), kind) for a, b, kind in APARTMENT_EDGES
     }
-    assert "networkx" not in sys.modules and "torch" not in sys.modules
+    assert {name: sys.modules.get(name) for name in watched} == before
 
 
 def test_parse_never_runs_code_stored_in_the_pickle(tmp_path: Path) -> None:
