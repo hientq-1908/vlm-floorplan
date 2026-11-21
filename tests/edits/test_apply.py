@@ -13,12 +13,13 @@ from vlm_floorplan.edits import (
     RemoveLink,
     SetLinkKind,
     SetRoomLabel,
+    SetRoomSize,
     SetRoomType,
     validate_graph,
 )
 from vlm_floorplan.schema import FloorplanGraph, Room, RoomType
 
-from .helpers import applied, link_kinds, rejected, sample_graph
+from .helpers import applied, link_kinds, rejected, sample_graph, single_floor_graph
 
 
 def pair(a: str, b: str) -> frozenset[str]:
@@ -40,62 +41,81 @@ def test_apply_does_not_mutate_the_input_graph() -> None:
 
 
 def test_add_room_assigns_the_next_free_id_and_records_it_in_the_op() -> None:
-    result = applied(sample_graph(), AddRoom(type="bedroom", x=50, y=60, floor=2, label="Kids"))
-    assert result.op.room_id == "r7"
-    assert result.op.floor == 2
-    new = room(result.graph, "r7")
-    assert (new.type, new.label, new.xy, new.entrance) == (
+    result = applied(
+        single_floor_graph(), AddRoom(type="bedroom", x=50, y=60, size=70, label="Kids")
+    )
+    assert result.op.room_id == "r5"
+    new = room(result.graph, "r5")
+    assert (new.type, new.label, new.xy, new.size, new.entrance) == (
         RoomType.BEDROOM,
         "Kids",
         (50, 60),
+        70,
         False,
     )
-    assert new in result.graph.floors[1].rooms
+    assert new in result.graph.floors[0].rooms
 
 
-def test_add_room_on_a_single_floor_plan_needs_no_floor() -> None:
-    single = sample_graph().model_copy(update={"floors": sample_graph().floors[:1]})
-    assert applied(single, AddRoom(type="storage", x=1, y=2)).op.floor == 1
-
-
-def test_add_room_with_several_floors_needs_a_floor() -> None:
-    assert rejected(sample_graph(), AddRoom(type="storage", x=1, y=2)).error.code == (
-        EditErrorCode.AMBIGUOUS_FLOOR
-    )
-
-
-def test_add_room_on_a_missing_floor_is_rejected() -> None:
-    error = rejected(sample_graph(), AddRoom(type="storage", x=1, y=2, floor=9)).error
-    assert error.code == EditErrorCode.UNKNOWN_FLOOR
-    assert "[1, 2]" in error.message
+def test_add_room_to_a_plan_with_several_floors_is_rejected() -> None:
+    error = rejected(sample_graph(), AddRoom(type="storage", x=1, y=2, size=30)).error
+    assert error.code == EditErrorCode.AMBIGUOUS_FLOOR
 
 
 def test_add_room_with_an_id_in_use_is_rejected() -> None:
-    op = AddRoom(type="storage", x=1, y=2, floor=1, room_id="r3")
-    assert rejected(sample_graph(), op).error.code == EditErrorCode.ID_IN_USE
+    op = AddRoom(type="storage", x=1, y=2, size=30, room_id="r3")
+    assert rejected(single_floor_graph(), op).error.code == EditErrorCode.ID_IN_USE
 
 
 def test_add_room_has_no_exterior_door() -> None:
-    op = AddRoom(type="entry", x=50, y=50, floor=1)
-    new = room(applied(sample_graph(), op).graph, "r7")
+    op = AddRoom(type="entry", x=50, y=50, size=30)
+    new = room(applied(single_floor_graph(), op).graph, "r5")
     assert not new.entrance
 
 
 def test_add_room_warns_that_the_new_room_is_isolated() -> None:
-    result = applied(sample_graph(), AddRoom(type="storage", x=1, y=2, floor=1))
-    assert [w.room_ids for w in result.warnings] == [("r7",)]
+    result = applied(single_floor_graph(), AddRoom(type="storage", x=1, y=2, size=30))
+    assert [w.room_ids for w in result.warnings] == [("r5",)]
 
 
 def test_add_room_to_an_empty_plan_gives_r0() -> None:
-    empty = sample_graph().model_copy(
-        update={"floors": [sample_graph().floors[0].model_copy(update={"rooms": [], "links": []})]}
+    base = single_floor_graph()
+    empty = base.model_copy(
+        update={"floors": [base.floors[0].model_copy(update={"rooms": [], "links": []})]}
     )
-    assert applied(empty, AddRoom(type="living", x=500, y=500)).op.room_id == "r0"
+    assert applied(empty, AddRoom(type="living", x=500, y=500, size=90)).op.room_id == "r0"
 
 
 def test_room_ids_after_a_delete_never_collide() -> None:
-    graph = applied(sample_graph(), DeleteRoom(room_id="r6")).graph
-    assert applied(graph, AddRoom(type="storage", x=1, y=2, floor=1)).op.room_id == "r6"
+    graph = applied(single_floor_graph(), DeleteRoom(room_id="r4")).graph
+    assert applied(graph, AddRoom(type="storage", x=1, y=2, size=30)).op.room_id == "r4"
+
+
+# --- set_room_size ----------------------------------------------------------------------
+
+
+def test_set_room_size_changes_only_the_size() -> None:
+    graph = single_floor_graph()
+    result = applied(graph, SetRoomSize(room_id="r2", size=200))
+    changed = room(result.graph, "r2")
+    assert changed.size == 200
+    assert changed.model_copy(update={"size": room(graph, "r2").size}) == room(graph, "r2")
+    assert result.description == "changed the size of r2 from 60 to 200"
+    assert result.graph.floors[0].links == graph.floors[0].links
+
+
+def test_set_room_size_to_the_same_size_is_refused() -> None:
+    error = rejected(single_floor_graph(), SetRoomSize(room_id="r2", size=60)).error
+    assert error.code == EditErrorCode.NO_CHANGE
+
+
+def test_set_room_size_of_a_room_without_size_says_so() -> None:
+    result = applied(sample_graph(), SetRoomSize(room_id="r2", size=80))
+    assert result.description == "changed the size of r2 to 80"
+
+
+def test_set_room_size_of_an_unknown_room_is_refused() -> None:
+    error = rejected(single_floor_graph(), SetRoomSize(room_id="r9", size=80)).error
+    assert error.code == EditErrorCode.UNKNOWN_ROOM
 
 
 # --- move_room --------------------------------------------------------------------------

@@ -6,13 +6,14 @@ The edit tools themselves are described in `docs/edit-operations.md`.
 
 ## The tool set
 
-There are eleven tools: the ten edit tools, plus `new_plan` for drawing a whole plan from scratch.
+There are twelve tools: the eleven edit tools, plus `new_plan` for drawing a whole plan from scratch.
 `agent_tool_schemas()` returns them in the OpenAI function-calling format, which is what vLLM takes as `tools` and what the Qwen3.5 chat template renders into the system block.
 
 | Tool | Arguments | What it does |
 |------|-----------|--------------|
-| `add_room` | `type`, `x`, `y`, optional `label`, `floor` | Adds a room with no links and no exterior door. The next free id is assigned. |
+| `add_room` | `type`, `x`, `y`, `size`, optional `label` | Adds a room with no links and no exterior door. The next free id is assigned. |
 | `move_room` | `room_id`, `x`, `y` | Moves a room's point. |
+| `set_room_size` | `room_id`, `size` | Changes a room's size (the radius of a circle with the room's area, on the 0-1000 grid). |
 | `delete_room` | `room_id` | Deletes a room and every link that touches it. |
 | `set_room_type` | `room_id`, `type` | Changes the room type. |
 | `set_room_label` | `room_id`, `label` | Renames a room. An empty label removes the name. |
@@ -25,11 +26,11 @@ There are eleven tools: the ten edit tools, plus `new_plan` for drawing a whole 
 
 Every argument is a flat scalar: a string or an integer.
 `new_plan` takes the plan as a string on purpose.
-It is the one place a nested structure would otherwise be needed, and compact JSON (`compact.py`) is already the text the perception model writes, so one format serves both.
-The ten edit tools stay available after `new_plan`, for every later change.
+It is the one place a nested structure would otherwise be needed, and the plan is flat compact JSON (`compact.py`): `{"rooms":[...],"links":[...]}`, with a `size` per room and no floor.
+The eleven edit tools stay available after `new_plan`, for every later change.
 
 Why `new_plan` is a separate tool and not a series of `add_room` calls: drawing ten rooms and twenty links one call at a time is many turns, and the user asked for the result, not the steps.
-`new_plan` keeps the current image size, and the plan it replaces is gone, so its description tells the model to use it only when there is nothing to keep.
+`new_plan` keeps the current image size and the exterior wall (the model reads the wall and never writes it), and the plan it replaces is gone, so its description tells the model to use it only when there is nothing to keep.
 
 ## The call format
 
@@ -93,8 +94,10 @@ The plan was not changed.
 A refusal uses the code `invalid_plan`, names the first problem in plain words, and leaves the plan alone:
 
 ```text
-REJECTED (invalid_plan): The plan is not valid: floor 1: link r0-r9 refers to r9, which is not a room on this floor.
+REJECTED (invalid_plan): The plan is not valid: link r0-r9 refers to r9, which is not a room in the plan.
 The plan was not changed.
+plan: 6 rooms, 9 links
+...
 
 REJECTED (invalid_plan): The plan is not valid: it is not JSON (Expecting value at character 0).
 The plan was not changed.
@@ -106,9 +109,10 @@ The plan was not changed.
 An accepted plan answers like an edit, including warnings:
 
 ```text
-OK: replaced the plan with a new one on 1 floor.
+OK: replaced the plan with a new one.
 Warning: no room is marked as having an exterior door.
-The plan now has 6 rooms and 9 links (5 door, 1 opening, 3 wall).
+plan: 6 rooms, 9 links
+...
 ```
 
 A call with the wrong arguments (a missing or extra argument, a non-string `plan`) is refused with `invalid_arguments`.
@@ -150,30 +154,32 @@ A harder request that leaves them out is a later change to `request()` only, bec
 
 ## One full episode
 
-`DeleteRoomTask("r5")` on the built-in sample plan (`agent/sample_plan.py`), as a TRL record (`tools` omitted here, it holds the eleven schemas):
+`DeleteRoomTask("r5")` on the built-in sample plan (`agent/sample_plan.py`), as a TRL record (`tools` omitted here, it holds the twelve schemas):
 
 ```json
 {"id": "sample/six-rooms#delete_room", "task": "delete_room", "reward": 1.0, "messages": [
  {"role": "system", "content": "You edit a floorplan room graph with tools. ..."},
- {"role": "user", "content": "Current plan:\nfloor 1: 5 rooms, 7 links\n  r0 bedroom at (200, 200)\n  ...\n  links: r0-r1 wall, r1-r2 wall, ...\n\nRequest: Add a storage room at (850, 850). It has a shared wall with r3 (living) and a door to r4 (entry)."},
+ {"role": "user", "content": "Current plan:\nplan: 5 rooms, 7 links\nexterior wall: (0, 0), (1000, 0), (1000, 1000), (0, 1000)\nr0 bedroom at (200, 200) size 226\n...\nlinks: r0-r1 wall, ...\n\nRequest: Add a storage room at (850, 850). It has a shared wall with r3 (living) and a door to r4 (entry)."},
  {"role": "assistant", "reasoning_content": "The user wants a storage room at (850, 850). I add the room first. It starts with no links, so I connect it afterwards.", "content": "",
-  "tool_calls": [{"type": "function", "function": {"name": "add_room", "arguments": {"type": "storage", "x": 850, "y": 850}}}]},
- {"role": "tool", "name": "add_room", "content": "OK: added storage room r5 at (850, 850) on floor 1.\nWarning: room r5 has no links to other rooms on floor 1.\nThe plan now has 6 rooms and 7 links (4 door, 1 opening, 2 wall)."},
+  "tool_calls": [{"type": "function", "function": {"name": "add_room", "arguments": {"type": "storage", "x": 850, "y": 850, "size": 169}}}]},
+ {"role": "tool", "name": "add_room", "content": "OK: added storage room r5 at (850, 850).\nWarning: room r5 has no links to other rooms.\nplan: 6 rooms, 7 links\nexterior wall: ...\nr0 bedroom at (200, 200) size 226\n...\nr5 storage at (850, 850) size 169\nlinks: r0-r1 wall, ..."},
  {"role": "assistant", "reasoning_content": "The request says r5 shares a wall with r3, so I link them.", "content": "",
   "tool_calls": [{"type": "function", "function": {"name": "add_link", "arguments": {"room_a": "r5", "room_b": "r3", "kind": "wall"}}}]},
- {"role": "tool", "name": "add_link", "content": "OK: linked r5 and r3 with a wall.\nThe plan now has 6 rooms and 8 links (4 door, 1 opening, 3 wall)."},
+ {"role": "tool", "name": "add_link", "content": "OK: linked r5 and r3 with a wall.\n<the whole plan, as above>"},
  {"role": "assistant", "reasoning_content": "The request gives r5 a door to r4. A door needs a wall link first, so I add the wall.", "content": "",
   "tool_calls": [{"type": "function", "function": {"name": "add_link", "arguments": {"room_a": "r5", "room_b": "r4", "kind": "wall"}}}]},
- {"role": "tool", "name": "add_link", "content": "OK: linked r5 and r4 with a wall.\nThe plan now has 6 rooms and 9 links (4 door, 1 opening, 4 wall)."},
+ {"role": "tool", "name": "add_link", "content": "OK: linked r5 and r4 with a wall.\n<the whole plan, as above>"},
  {"role": "assistant", "reasoning_content": "Now I turn the wall between r5 and r4 into a door.", "content": "",
   "tool_calls": [{"type": "function", "function": {"name": "set_link_kind", "arguments": {"room_a": "r5", "room_b": "r4", "kind": "door"}}}]},
- {"role": "tool", "name": "set_link_kind", "content": "OK: changed the link between r5 and r4 from wall to door.\nThe plan now has 6 rooms and 9 links (5 door, 1 opening, 3 wall)."},
+ {"role": "tool", "name": "set_link_kind", "content": "OK: changed the link between r5 and r4 from wall to door.\n<the whole plan, as above>"},
  {"role": "assistant", "reasoning_content": "The room and everything the request lists are in place.", "content": "Added the storage room at (850, 850). It has a shared wall with r3 (living) and a door to r4 (entry)."}
 ]}
 ```
 
 The tool responses are not scripted text.
 They are what the environment returned when the scripted calls were played, so they always match what the app would say.
+Every response, applied or refused, is a status line (`OK:` or `REJECTED (code):`), any warnings, and then the whole plan as it is now, in the same text as the user turn: `plan:` header, `exterior wall:` line, one line per room with its `size`, one `links:` line.
+A refused call shows the unchanged plan after "The plan was not changed."
 
 ## Building examples
 

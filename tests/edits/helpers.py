@@ -39,6 +39,17 @@ def sample_graph() -> FloorplanGraph:
     return FloorplanGraph(floors=[floor1, floor2], image=ImageSize(w=800, h=600))
 
 
+def single_floor_graph() -> FloorplanGraph:
+    """The first floor of `sample_graph`, with sizes and an exterior wall: what the model sees."""
+    full = sample_graph()
+    rooms = [
+        room.model_copy(update={"size": 40 + 10 * i}) for i, room in enumerate(full.rooms()[:5])
+    ]
+    floor = Floor(floor=1, rooms=rooms, links=full.floors[0].links)
+    wall = [(50, 400), (50, 900), (900, 900), (900, 400)]
+    return FloorplanGraph(floors=[floor], image=full.image, exterior_wall=wall)
+
+
 def applied(graph: FloorplanGraph, op: EditOp) -> EditApplied:
     outcome = apply_op(graph, op)
     assert isinstance(outcome, EditApplied), outcome

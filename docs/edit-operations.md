@@ -21,8 +21,9 @@ That makes undo cheap (keep the old graph) and makes replays trivially safe.
 
 | Op | Arguments | Notes |
 |----|-----------|-------|
-| `add_room` | `type`, `x`, `y`, optional `label`, `floor` | The id is assigned (next free number). The new room has no links and no exterior door. |
+| `add_room` | `type`, `x`, `y`, `size`, optional `label` | The id is assigned (next free number). The new room has no links and no exterior door. |
 | `move_room` | `room_id`, `x`, `y` | Changes only the point. |
+| `set_room_size` | `room_id`, `size` | Changes only the size. Refused with `no_change` when the room already has that size. |
 | `delete_room` | `room_id` | Drops every link that touches the room. |
 | `set_room_type` | `room_id`, `type` | |
 | `set_room_label` | `room_id`, `label` | An empty label removes the name. |
@@ -79,8 +80,8 @@ So the check is a guard against the common mistake (a door out of nowhere), not 
 
 `validate_graph(graph)` returns every finding as an `Issue` with a severity, a code, a sentence naming the rooms, and the room ids.
 
-- Errors: duplicate floors or room ids, malformed ids, coordinates outside the 0-1000 grid, self links, links to rooms that do not exist or are on another floor, duplicate links.
-- Warnings: no room is marked as having an exterior door, and a room with no links on a floor that has other rooms.
+- Errors: duplicate floors or room ids, malformed ids, coordinates outside the 0-1000 grid, self links, links to rooms that do not exist or are on another floor, duplicate links, a room size outside 1-500.
+- Warnings: no room is marked as having an exterior door, and a room with no links when the plan has other rooms.
 
 The schema's pydantic validators already refuse most of these, so a graph built normally is valid.
 The validator still earns its place:
@@ -104,15 +105,24 @@ A history full of no-ops would teach a model that they are fine, and the message
 
 ```text
 OK: changed the link between r1 and r3 from wall to door.
-The plan now has 7 rooms and 5 links (3 door, 1 opening, 1 wall).
+plan: 5 rooms, 4 links
+exterior wall: (50, 400), (50, 900), (900, 900), (900, 400)
+r0 entry at (100, 500) size 40 entrance
+r1 living 'OH' at (400, 500) size 50
+...
+links: r0-r1 door, r1-r2 opening, r1-r3 door, r3-r4 wall
 
 REJECTED (not_adjacent): Cannot add a door between r0 and r4: they are not linked. ...
 The plan was not changed.
+plan: 5 rooms, 4 links
+...
 ```
 
-`summarize_graph` writes the whole plan as lines (one per room, one `links:` line per floor).
+Every response is a status line, then any warnings, then `summarize_graph` of the plan as it is now (the unchanged plan for a refusal).
+`summarize_graph` writes the plan as lines: a `plan:` header (`plan: empty` for no rooms), the `exterior wall:` line, one line per room, one `links:` line.
+It is single-floor and unindented: the text names no floor, and it raises `ValueError` for a graph with several floors.
 It is shorter than JSON and easy to scan.
-The compact JSON in `vlm_floorplan.compact` stays the format the model reads and writes when it perceives a plan.
+The model writes a whole plan only as the flat compact JSON of `vlm_floorplan.compact` (`new_plan`), and smaller changes through the edit tools.
 
 ## History: replay and undo
 

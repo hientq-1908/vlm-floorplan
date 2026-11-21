@@ -5,11 +5,11 @@ import json
 import pytest
 from helpers_eval import IMAGE, perfect_prediction
 
-from vlm_floorplan.compact import to_compact
+from vlm_floorplan.evaluation.floors_json import to_floors_json
 from vlm_floorplan.evaluation.parser import ParseError, Source, parse_model_output, strip_think
 
 GRAPH = perfect_prediction()
-COMPACT = to_compact(GRAPH)
+COMPACT = to_floors_json(GRAPH)
 
 
 def test_canonical_compact_json_parses_strictly() -> None:
