@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -107,11 +108,16 @@ def _extract_result(archive: Path, dest: Path) -> Path:
     return dest
 
 
-def _check_result(result_dir: Path) -> list[str]:
+def check_manifest(result_dir: Path) -> list[str]:
+    """The manifest check every job's result must pass; raises on any mismatch."""
     problems = verify_manifest(result_dir)
     if problems:
         raise DownloadVerificationError("manifest check failed: " + "; ".join(problems[:5]))
-    checks = ["manifest: every file matches its SHA-256"]
+    return ["manifest: every file matches its SHA-256"]
+
+
+def _check_result(result_dir: Path) -> list[str]:
+    checks = check_manifest(result_dir)
     summary_path = result_dir / EXPECTED_RUNS_FILE
     if not summary_path.is_file():
         raise DownloadVerificationError(f"{EXPECTED_RUNS_FILE} is missing from the result")
@@ -123,8 +129,18 @@ def _check_result(result_dir: Path) -> list[str]:
     return checks
 
 
-def collect_and_delete(task: RemoteTask, dest: Path) -> CollectReport:
+def collect_and_delete(
+    task: RemoteTask,
+    dest: Path,
+    *,
+    result_artifact: str = RESULT_ARTIFACT,
+    check_result: Callable[[Path], list[str]] = _check_result,
+) -> CollectReport:
     """Download everything to `dest`, verify it, then delete the remote task.
+
+    The defaults verify the baseline job. Another job passes its own `result_artifact` name
+    and a `check_result` that raises `DownloadVerificationError` when the extracted result is
+    incomplete (it should call `check_manifest` first).
 
     Raises `DownloadVerificationError` (and leaves the task alone) when anything is off.
     Failed or stopped tasks are downloaded too, since their logs are the point; they
@@ -151,11 +167,11 @@ def collect_and_delete(task: RemoteTask, dest: Path) -> CollectReport:
 
     artifacts = task.download_artifacts(dest / "artifacts")
     checks += _check_artifacts(artifacts)
-    if RESULT_ARTIFACT in artifacts:
-        result_dir = _extract_result(artifacts[RESULT_ARTIFACT].path, dest / "result")
-        checks += _check_result(result_dir)
+    if result_artifact in artifacts:
+        result_dir = _extract_result(artifacts[result_artifact].path, dest / "result")
+        checks += check_result(result_dir)
     elif status == COMPLETED:
-        raise DownloadVerificationError(f"completed task has no {RESULT_ARTIFACT!r} artifact")
+        raise DownloadVerificationError(f"completed task has no {result_artifact!r} artifact")
     else:
         checks.append(f"task ended as {status!r} without a result archive; logs kept")
 
