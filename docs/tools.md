@@ -107,7 +107,7 @@ An accepted plan answers like an edit, including warnings:
 
 ```text
 OK: replaced the plan with a new one on 1 floor.
-Warning: no room is marked as the entrance.
+Warning: no room is marked as having an exterior door.
 The plan now has 6 rooms and 9 links (5 door, 1 opening, 3 wall).
 ```
 

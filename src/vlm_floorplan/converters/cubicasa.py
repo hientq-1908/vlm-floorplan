@@ -5,8 +5,15 @@ links are recovered from geometry. The rules (all distances in scaled-image
 pixels, where walls are about 15 px thick):
 
 - door link: grow the door polygon by 6 px and intersect it with every room;
-  the two rooms with the largest overlap are linked. If only one room is hit
-  and the door's wall is exterior, that room is an entrance.
+  the two rooms with the largest overlap are linked.
+- entrance: every exterior door (a door on a wall tagged External) flags the
+  room inside it, front, back and patio doors alike. The room inside is the one
+  the door touches alone, the best-overlap interior room when the door's other
+  neighbour is open air (outdoor, porch, terrace, car port; not a balcony,
+  loggia, glazed space or sun room), or the room on the inner face of the wall
+  when both touched rooms lie on that face (such a door links nothing). A door
+  that touches no room within 6 px is searched again within 20 px. On a plan
+  with no wall tagged External, a door touching one room counts too.
 - opening link: two rooms closer than 3 px (no wall between them) that face
   each other along at least 20 px of boundary, e.g. an open-plan kitchen and
   living room.
@@ -27,22 +34,26 @@ holds one graph per floor and never links rooms across floors.
 
 from __future__ import annotations
 
+import math
 from itertools import combinations
 from pathlib import Path
 
 from PIL import Image
-from shapely.geometry import Polygon
+from shapely.geometry import Point, Polygon
 from shapely.ops import unary_union
 
 from vlm_floorplan.converters.assemble import SourceFloor, SourceRoom, assemble
-from vlm_floorplan.converters.cubicasa_svg import SvgFloor, parse_svg
+from vlm_floorplan.converters.cubicasa_svg import SvgDoor, SvgFloor, parse_svg
 from vlm_floorplan.converters.facing import facing_length
 from vlm_floorplan.geometry import GridFrame, largest_polygon
 from vlm_floorplan.record import PlanRecord
 from vlm_floorplan.room_types import cubicasa_room_type
-from vlm_floorplan.schema import ImageSize, LinkKind
+from vlm_floorplan.schema import ImageSize, LinkKind, RoomType
 
 DOOR_BUFFER_PX = 6.0
+DOOR_REACH_PX = 20.0
+DOOR_SIDE_PROBE_PX = 8.0
+DWELLING_OUTDOOR_WORDS = ("BALCONY", "PARV", "LOGGIA", "LASITETTU", "SUNROOM")
 OPENING_MAX_GAP_PX = 3.0
 WALL_MAX_GAP_PX = 30.0
 MIN_SHARED_PX = 20.0
@@ -83,16 +94,87 @@ def _printed_label(label: str | None) -> str | None:
     return label
 
 
+def _door_hits(floor: SourceFloor, door: SvgDoor, reach: float) -> list[tuple[float, int]]:
+    """(overlap area, room index) for rooms within `reach` px of the door, largest first."""
+    zone = door.polygon.buffer(reach)
+    overlaps = [(zone.intersection(room.geometry).area, i) for i, room in enumerate(floor.rooms)]
+    return sorted((pair for pair in overlaps if pair[0] > 0), reverse=True)
+
+
+def _side_rooms(floor: SourceFloor, door: SvgDoor) -> tuple[set[int], set[int]]:
+    """Rooms found just beyond each face of the door, across the wall it sits in."""
+    box = door.polygon.minimum_rotated_rectangle
+    corners = list(box.exterior.coords)[:3]
+    edges = [
+        (corners[1][0] - corners[0][0], corners[1][1] - corners[0][1]),
+        (corners[2][0] - corners[1][0], corners[2][1] - corners[1][1]),
+    ]
+    lengths = [math.hypot(*edge) for edge in edges]
+    along = 0 if lengths[0] >= lengths[1] else 1
+    thickness = lengths[1 - along]
+    if lengths[along] == 0:
+        return set(), set()
+    nx, ny = -edges[along][1] / lengths[along], edges[along][0] / lengths[along]
+    centre = box.centroid
+    reach = thickness / 2 + DOOR_SIDE_PROBE_PX
+    sides = []
+    for sign in (1, -1):
+        probe = Point(centre.x + sign * nx * reach, centre.y + sign * ny * reach)
+        sides.append(
+            {i for i, room in enumerate(floor.rooms) if room.geometry.distance(probe) <= 1}
+        )
+    return sides[0], sides[1]
+
+
+def _opens_outside(floor: SourceFloor, door: SvgDoor, hits: list[tuple[float, int]]) -> list[int]:
+    """Rooms on the occupied side of an exterior door whose other side holds no room."""
+    first, second = _side_rooms(floor, door)
+    for occupied, empty in ((first, second), (second, first)):
+        if occupied and not empty:
+            return [i for _, i in hits if i in occupied]
+    return []
+
+
+def _is_part_of_dwelling(room: SourceRoom) -> bool:
+    """Balconies, loggias, glazed spaces and sun rooms: outdoor types that are not outside."""
+    text = f"{room.source_type} {room.label or ''}".upper()
+    return any(word in text for word in DWELLING_OUTDOOR_WORDS)
+
+
+def _is_open_air(room: SourceRoom) -> bool:
+    is_outdoor = room.type == RoomType.OUTDOOR or "CarPort" in room.source_type
+    return is_outdoor and not _is_part_of_dwelling(room)
+
+
+def _mark_entrance(floor: SourceFloor, hits: list[tuple[float, int]]) -> bool:
+    """Flag the interior room an exterior door opens into (the best overlap)."""
+    open_air = [i for _, i in hits if _is_open_air(floor.rooms[i])]
+    inside = [i for _, i in hits if i not in open_air]
+    if open_air and inside:
+        floor.rooms[inside[0]].entrance = True
+        return True
+    return False
+
+
 def _link_doors(floor: SourceFloor, svg_floor: SvgFloor, warnings: list[str]) -> None:
+    has_external_walls = any(wall.is_external for wall in svg_floor.walls)
     for door in svg_floor.doors:
-        zone = door.polygon.buffer(DOOR_BUFFER_PX)
-        overlaps = [
-            (zone.intersection(room.geometry).area, index) for index, room in enumerate(floor.rooms)
-        ]
-        hits = sorted((pair for pair in overlaps if pair[0] > 0), reverse=True)
+        hits = _door_hits(floor, door, DOOR_BUFFER_PX)
+        if not hits and door.wall.is_external:
+            # a door drawn just past the room outline, e.g. an outer porch door
+            hits = _door_hits(floor, door, DOOR_REACH_PX)
         if len(hits) >= 2:
+            if door.wall.is_external and not _mark_entrance(floor, hits):
+                inner = _opens_outside(floor, door, hits)
+                if inner:
+                    # both rooms lie on the inner face: the door opens outside, and
+                    # does not join them
+                    floor.rooms[inner[0]].entrance = True
+                    continue
             floor.link(hits[0][1], hits[1][1], LinkKind.DOOR)
-        elif len(hits) == 1 and door.wall.is_external:
+        elif len(hits) == 1 and (door.wall.is_external or not has_external_walls):
+            # a door with a room on one side only opens outside; a plan with no wall
+            # tagged External gives no better signal than that
             floor.rooms[hits[0][1]].entrance = True
         else:
             warnings.append(f"floor {svg_floor.number}: door touching {len(hits)} room(s) skipped")

@@ -148,14 +148,14 @@ class SetLinkKind(_Op):
 
 
 class AddExteriorDoor(_Op):
-    """Mark that a door to the outside opens into a room (it becomes an entrance of the plan)."""
+    """Mark that an exterior door opens into a room (any outside door, not only the front door)."""
 
     op: Literal["add_exterior_door"] = "add_exterior_door"
     room_id: RoomId = Field(description="The room the outside door opens into.")
 
 
 class RemoveExteriorDoor(_Op):
-    """Remove the door to the outside from a room (it stops being an entrance of the plan)."""
+    """Remove the exterior door from a room (it no longer has a door to the outside)."""
 
     op: Literal["remove_exterior_door"] = "remove_exterior_door"
     room_id: RoomId = Field(description="The room that has the outside door.")

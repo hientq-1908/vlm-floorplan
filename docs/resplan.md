@@ -63,6 +63,8 @@ The room's ResPlan category is kept in the record (`rooms[id].source_type`), nex
 ResPlan's graph has a `front_door` node.
 Our schema has an `entrance` flag on the room the door opens into.
 The converter picks the one room the front door overlaps most (after a small tolerance), even when the door sits in a corner next to a second room.
+ResPlan labels only the front door as exterior: its `front_door` layer holds that door, and the `door` layer does not say which of its doors lead outside, so the converter reads `door` entries only as links between rooms.
+So a ResPlan plan has one entrance room, while the flag itself means any exterior door (see `docs/architecture.md`).
 This also removes a bug class: the roadmap report found a front-door edge that came out as `via_window`, because a window next to the door linked the door node to a room.
 With no door node, that cannot happen.
 

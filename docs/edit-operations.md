@@ -80,7 +80,7 @@ So the check is a guard against the common mistake (a door out of nowhere), not 
 `validate_graph(graph)` returns every finding as an `Issue` with a severity, a code, a sentence naming the rooms, and the room ids.
 
 - Errors: duplicate floors or room ids, malformed ids, coordinates outside the 0-1000 grid, self links, links to rooms that do not exist or are on another floor, duplicate links.
-- Warnings: no room is marked as the entrance, and a room with no links on a floor that has other rooms.
+- Warnings: no room is marked as having an exterior door, and a room with no links on a floor that has other rooms.
 
 The schema's pydantic validators already refuse most of these, so a graph built normally is valid.
 The validator still earns its place:
