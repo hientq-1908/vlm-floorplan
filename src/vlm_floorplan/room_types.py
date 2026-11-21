@@ -213,7 +213,7 @@ SWISS_TYPES: dict[str, RoomType] = {
     "BALCONY": T.TERRACE,
     "LOGGIA": T.TERRACE,
     "TERRACE": T.TERRACE,
-    "WINTERGARTEN": T.TERRACE,  # a glazed veranda; CubiCasa5K files SunRoom under outdoor too
+    "WINTERGARTEN": T.TERRACE,  # a glazed veranda; CubiCasa5K files SunRoom under terrace too
     "STAIRCASE": T.STAIRS,
     "ELEVATOR": T.STAIRS,
     "VOID": T.STAIRS,  # open-to-below space around a stair, as in MSD
