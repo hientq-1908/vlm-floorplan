@@ -78,14 +78,24 @@ It is the text from `format_edit_outcome`, so the app and the training data show
 
 ```text
 OK: linked r5 and r4 with a wall.
-The plan now has 6 rooms and 9 links (4 door, 1 opening, 4 wall).
+plan: 6 rooms, 9 links
+exterior wall: (0, 0), (1000, 0), (1000, 1000), (0, 1000)
+r0 bedroom at (200, 200) size 226
+r1 bathroom at (500, 200) size 160
+r2 kitchen at (800, 200) size 226
+r3 living at (350, 700) size 366
+r4 entry at (850, 550) size 169 entrance
+r5 storage at (850, 850) size 169
+links: r0-r1 wall, r1-r2 wall, r0-r3 door, r1-r3 door, r2-r3 opening, r2-r4 door, r3-r4 door, r5-r3 wall, r5-r4 wall
 ```
 
-A refused call starts with `REJECTED` and a stable error code, and says the plan was not changed:
+A refused call starts with `REJECTED` and a stable error code, says the plan was not changed, and shows the unchanged plan:
 
 ```text
 REJECTED (not_adjacent): Cannot add a door between r0 and r2: they are not linked. If they do touch, first add a link of kind 'wall' between them, then change it to a door with set_link_kind.
 The plan was not changed.
+plan: 6 rooms, 8 links
+...
 ```
 
 ### `new_plan` and invalid plans
@@ -101,9 +111,13 @@ plan: 6 rooms, 9 links
 
 REJECTED (invalid_plan): The plan is not valid: it is not JSON (Expecting value at character 0).
 The plan was not changed.
+plan: 6 rooms, 9 links
+...
 
 REJECTED (invalid_plan): The plan has no rooms.
 The plan was not changed.
+plan: 6 rooms, 9 links
+...
 ```
 
 An accepted plan answers like an edit, including warnings:
