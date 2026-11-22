@@ -282,15 +282,18 @@ TASK_KINDS = ("delete_room", "close_door", "draw_plan")
 def candidate_tasks(record: PlanRecord, kind: str) -> list[Task]:
     """Every task of this kind that makes sense on this plan, in plan order."""
     plan = record.graph
+    if kind not in TASK_KINDS:
+        raise ValueError(f"unknown task kind {kind!r}; kinds are {', '.join(TASK_KINDS)}")
     if len(plan.floors) != 1:  # the model-facing text and tools are single-floor
         return []
+    if plan.exterior_wall is None or any(room.size is None for room in plan.rooms()):
+        return []  # the plan text, new_plan and add_room all carry every size and the wall
     if kind == "delete_room":
         linked = {end for floor in plan.floors for link in floor.links for end in (link.a, link.b)}
         return [
             DeleteRoomTask(room.id)
             for room in plan.rooms()
             if room.id in linked
-            and room.size is not None  # add_room needs a size to put the room back
             and room.type.value != "unknown"
             and len(room.label or "") <= MAX_LABEL_LENGTH
         ]
@@ -301,8 +304,4 @@ def candidate_tasks(record: PlanRecord, kind: str) -> list[Task]:
             for link in floor.links
             if link.kind != LinkKind.WALL
         ]
-    if kind == "draw_plan":
-        rooms = plan.rooms()
-        has_sizes = all(room.size is not None for room in rooms)  # new_plan needs every size
-        return [DrawPlanTask()] if has_sizes and 0 < len(rooms) <= MAX_DRAW_ROOMS else []
-    raise ValueError(f"unknown task kind {kind!r}; kinds are {', '.join(TASK_KINDS)}")
+    return [DrawPlanTask()] if 0 < len(plan.rooms()) <= MAX_DRAW_ROOMS else []

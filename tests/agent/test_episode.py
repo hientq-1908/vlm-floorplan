@@ -107,22 +107,37 @@ def test_delete_room_tasks_skip_rooms_add_room_would_refuse() -> None:
     assert tasks
 
 
-def test_draw_plan_is_offered_only_when_every_room_has_a_size() -> None:
+def _without_size(room_id: str) -> PlanRecord:
     graph = RECORD.graph
     floors = [
         floor.model_copy(
             update={
                 "rooms": [
-                    room.model_copy(update={"size": None}) if room.id == "r2" else room
+                    room.model_copy(update={"size": None}) if room.id == room_id else room
                     for room in floor.rooms
                 ]
             }
         )
         for floor in graph.floors
     ]
-    sizeless = RECORD.model_copy(update={"graph": graph.model_copy(update={"floors": floors})})
-    assert candidate_tasks(RECORD, "draw_plan") == [DrawPlanTask()]
-    assert candidate_tasks(sizeless, "draw_plan") == []
+    return RECORD.model_copy(update={"graph": graph.model_copy(update={"floors": floors})})
+
+
+def _without_wall() -> PlanRecord:
+    graph = RECORD.graph.model_copy(update={"exterior_wall": None})
+    return RECORD.model_copy(update={"graph": graph})
+
+
+@pytest.mark.parametrize("kind", TASK_KINDS)
+def test_a_plan_with_a_sizeless_room_yields_no_tasks(kind: str) -> None:
+    assert candidate_tasks(RECORD, kind)
+    assert candidate_tasks(_without_size("r2"), kind) == []
+
+
+@pytest.mark.parametrize("kind", TASK_KINDS)
+def test_a_plan_without_an_exterior_wall_yields_no_tasks(kind: str) -> None:
+    assert candidate_tasks(RECORD, kind)
+    assert candidate_tasks(_without_wall(), kind) == []
 
 
 def test_the_delete_room_request_gives_the_size_add_room_uses() -> None:
