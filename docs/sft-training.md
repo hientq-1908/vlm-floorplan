@@ -186,7 +186,8 @@ The collector is the baseline's: it deletes the task only after verification.
 A failed task is downloaded the same way, since its logs are the point, and then deleted.
 The job writes `job.log` into the result, which is the complete log.
 The agent installs the packages in `deploy/sft/requirements-sft.txt`, which a test keeps in step with the `ml` group.
-A full run reports its loss curve to ClearML (`train.report_to = "clearml"`); a smoke run does not.
+On the agent, a full run reports its loss curve to ClearML (`train.report_to = "clearml"`); a smoke run and a local run do not.
+Only metrics go there: the job sets `CLEARML_LOG_MODEL=false`, so checkpoints are not uploaded, since the result archive already carries the adapter.
 
 ## Tests
 
