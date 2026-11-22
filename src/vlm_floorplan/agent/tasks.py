@@ -79,7 +79,7 @@ _TYPE_NOUNS = {
     RoomType.ENTRY: "entry",
     RoomType.STORAGE: "storage room",
     RoomType.UTILITY: "utility room",
-    RoomType.OUTDOOR: "outdoor space",
+    RoomType.TERRACE: "terrace",
     RoomType.GARAGE: "garage",
     RoomType.STAIRS: "staircase",
     RoomType.OTHER: "room",

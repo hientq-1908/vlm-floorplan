@@ -72,7 +72,7 @@ There is at most one link per pair of rooms.
 The flag means "an exterior door opens into this room": every outside door counts, front, back and patio doors alike, so a plan can have several entrance rooms.
 Sources differ in what they mark: CubiCasa5K flags every exterior door, while ResPlan, MSD and Swiss Dwellings mark only each apartment's front door.
 A ResPlan or Swiss Dwellings plan is one apartment, so it has one entrance room, while an MSD record holds several apartments and so has several.
-Outdoor spaces such as balconies and terraces are ordinary rooms of type `outdoor`.
+Outdoor spaces such as balconies and terraces are ordinary rooms of type `terrace`.
 An outside node would be a node with no position and no polygon, which breaks the rule that every node is a point on the image.
 
 **There is one graph per floor, and no link ever crosses floors.**
@@ -87,7 +87,7 @@ This idea comes from paperbanana's `DiagramIR`, which validates references in th
 
 ## Room types
 
-The coarse type set is `living, kitchen, dining, bedroom, bathroom, entry, storage, utility, outdoor, garage, stairs, other, unknown`.
+The coarse type set is `living, kitchen, dining, bedroom, bathroom, entry, storage, utility, terrace, garage, stairs, other, unknown`.
 It is deliberately small, for two reasons.
 A 4B model has to predict it from an image, and the retrieval tool in M6 has to compare plans from different datasets.
 `room_types.py` maps CubiCasa5K (60+ raw classes), ResPlan (7 plus a front door), MSD (9) and Swiss Dwellings (77 `area` subtypes) into this set.
@@ -102,7 +102,7 @@ The raw source label is kept next to the coarse type, in `PlanRecord.rooms[...].
 The model reads and writes a compact text form (`compact.py`):
 
 ```json
-{"floors":[{"floor":1,"rooms":[{"id":"r0","type":"outdoor","xy":[564,839]},{"id":"r2","type":"entry","xy":[474,735]}],"links":[["r0","r2","door"]]}]}
+{"floors":[{"floor":1,"rooms":[{"id":"r0","type":"terrace","xy":[564,839]},{"id":"r2","type":"entry","xy":[474,735]}],"links":[["r0","r2","door"]]}]}
 ```
 
 It has no whitespace, links are `[a, b, kind]` triples, optional fields appear only when set, and the image size is left out.
@@ -128,7 +128,7 @@ They do not match `F1_original.png`.
 |---|---|
 | Rooms | Each `Space` group is a room. Its polygon is repaired with `make_valid`, and the largest part is kept. |
 | Door link | Only doors whose parent is a wall count. Grow the door polygon by 6 px, and link the two rooms it overlaps most. |
-| Entrance | A door on an external wall is an exterior door. The room inside is an entrance when the door touches only one room, when its other neighbour is an open-air space (outdoor, porch, terrace, car port; not a balcony, loggia, glazed space or sun room), when both touched rooms lie on the inner face of the wall, or when the door is drawn up to 20 px off the room. On a plan with no wall tagged External, a door touching one room counts. |
+| Entrance | A door on an external wall is an exterior door. The room inside is an entrance when the door touches only one room, when its other neighbour is an open-air space (porch, terrace, car port; not a balcony, loggia, glazed space or sun room), when both touched rooms lie on the inner face of the wall, or when the door is drawn up to 20 px off the room. On a plan with no wall tagged External, a door touching one room counts. |
 | Opening link | Two rooms less than 3 px apart that face each other along at least 20 px of boundary. |
 | Wall link | Two rooms within 30 px that face each other along at least 20 px of boundary, where walls cover at least 20% of the gap. Facing means straight across, so rooms that only meet diagonally at a wall cross are not linked. |
 | Position | `representative_point()` of the polygon, scaled to the 0 to 1000 grid by the image width and height. |

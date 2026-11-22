@@ -47,8 +47,8 @@ CUBICASA_CLASS_TYPES: dict[str, RoomType] = {
     "Utility": T.UTILITY,
     "TechnicalRoom": T.UTILITY,
     "ServiceRoom": T.UTILITY,
-    "Outdoor": T.OUTDOOR,
-    "SunRoom": T.OUTDOOR,
+    "Outdoor": T.TERRACE,
+    "SunRoom": T.TERRACE,
     "Garage": T.GARAGE,
     "CarPort": T.GARAGE,
     "StairWell": T.STAIRS,
@@ -95,10 +95,10 @@ FINNISH_WORD_TYPES: dict[str, RoomType] = {
     # utility
     "KHH": T.UTILITY, "KODINHOITOHUONE": T.UTILITY, "TEKN": T.UTILITY, "LÄMMÖNJAKOH": T.UTILITY,
     "LJK": T.UTILITY, "SIIVOUS": T.UTILITY,
-    # outdoor
-    "PARVEKE": T.OUTDOOR, "PARV": T.OUTDOOR, "TERASSI": T.OUTDOOR, "KUISTI": T.OUTDOOR,
-    "AVOKUISTI": T.OUTDOOR, "ULKOTILA": T.OUTDOOR, "PATIO": T.OUTDOOR, "PIHA": T.OUTDOOR,
-    "KATOS": T.OUTDOOR, "LASITETTU": T.OUTDOOR,
+    # terrace
+    "PARVEKE": T.TERRACE, "PARV": T.TERRACE, "TERASSI": T.TERRACE, "KUISTI": T.TERRACE,
+    "AVOKUISTI": T.TERRACE, "ULKOTILA": T.TERRACE, "PATIO": T.TERRACE, "PIHA": T.TERRACE,
+    "KATOS": T.TERRACE, "LASITETTU": T.TERRACE,
     # garage
     "AT": T.GARAGE, "AUTOTALLI": T.GARAGE, "AUTOKATOS": T.GARAGE,
     # stairs
@@ -111,9 +111,9 @@ FINNISH_WORD_TYPES: dict[str, RoomType] = {
 # Compound words ("ALATERASSI" = lower terrace) contain a known word. Only long,
 # unambiguous stems are matched inside words, so "K" never matches inside "KOMERO".
 FINNISH_STEM_TYPES: dict[str, RoomType] = {
-    "TERASSI": T.OUTDOOR,
-    "PARVEKE": T.OUTDOOR,
-    "KUISTI": T.OUTDOOR,
+    "TERASSI": T.TERRACE,
+    "PARVEKE": T.TERRACE,
+    "KUISTI": T.TERRACE,
     "KEITTIÖ": T.KITCHEN,
     "SAUNA": T.BATHROOM,
     "VARASTO": T.STORAGE,
@@ -160,7 +160,7 @@ RESPLAN_TYPES: dict[str, RoomType] = {
     "kitchen": T.KITCHEN,
     "bedroom": T.BEDROOM,
     "bathroom": T.BATHROOM,
-    "balcony": T.OUTDOOR,
+    "balcony": T.TERRACE,
     "storage": T.STORAGE,
     "stair": T.STAIRS,
 }
@@ -178,7 +178,7 @@ MSD_TYPES: dict[str, RoomType] = {
     "Stairs": T.STAIRS,
     "Storeroom": T.STORAGE,
     "Bathroom": T.BATHROOM,
-    "Balcony": T.OUTDOOR,
+    "Balcony": T.TERRACE,
 }
 
 # The graph pickles store `room_type` as an index into ROOM_NAMES, not as a name.
@@ -210,10 +210,10 @@ SWISS_TYPES: dict[str, RoomType] = {
     "WASH_AND_DRY_ROOM": T.UTILITY,
     "HEATING": T.UTILITY,
     "TECHNICAL_AREA": T.UTILITY,
-    "BALCONY": T.OUTDOOR,
-    "LOGGIA": T.OUTDOOR,
-    "TERRACE": T.OUTDOOR,
-    "WINTERGARTEN": T.OUTDOOR,  # a glazed veranda; CubiCasa5K files SunRoom under outdoor too
+    "BALCONY": T.TERRACE,
+    "LOGGIA": T.TERRACE,
+    "TERRACE": T.TERRACE,
+    "WINTERGARTEN": T.TERRACE,  # a glazed veranda; CubiCasa5K files SunRoom under terrace too
     "STAIRCASE": T.STAIRS,
     "ELEVATOR": T.STAIRS,
     "VOID": T.STAIRS,  # open-to-below space around a stair, as in MSD
@@ -222,8 +222,8 @@ SWISS_TYPES: dict[str, RoomType] = {
     "OFFICE": T.OTHER,
     "NOT_DEFINED": T.UNKNOWN,
     # Rarer subtypes, mostly from mixed-use buildings (all 77 values in the full file).
-    "GARDEN": T.OUTDOOR,
-    "PATIO": T.OUTDOOR,
+    "GARDEN": T.TERRACE,
+    "PATIO": T.TERRACE,
     "GARAGE": T.GARAGE,
     "CARPARK": T.GARAGE,
     "SANITARY_ROOMS": T.BATHROOM,

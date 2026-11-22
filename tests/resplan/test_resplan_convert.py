@@ -28,7 +28,7 @@ def test_rooms_are_mapped_to_coarse_types(plan: dict[str, Any]) -> None:
     converted = convert_plan(plan)
     types = sorted(room.type for room in converted.graph.rooms())
     assert types == sorted(
-        [RoomType.LIVING, RoomType.KITCHEN, RoomType.BEDROOM, RoomType.BATHROOM, RoomType.OUTDOOR]
+        [RoomType.LIVING, RoomType.KITCHEN, RoomType.BEDROOM, RoomType.BATHROOM, RoomType.TERRACE]
     )
 
 
@@ -45,7 +45,7 @@ def test_front_door_is_not_a_room(plan: dict[str, Any]) -> None:
         (RoomType.BATHROOM, RoomType.LIVING, LinkKind.WALL),
         (RoomType.BATHROOM, RoomType.KITCHEN, LinkKind.WALL),
         # A window is not a passage, so the balcony is only walled off from the living room.
-        (RoomType.OUTDOOR, RoomType.LIVING, LinkKind.WALL),
+        (RoomType.TERRACE, RoomType.LIVING, LinkKind.WALL),
         # Far apart: nothing to link.
         (RoomType.BEDROOM, RoomType.KITCHEN, None),
     ],
@@ -105,7 +105,7 @@ def test_each_room_point_lies_inside_its_polygon(plan: dict[str, Any]) -> None:
 def test_grid_y_points_down_like_the_image(plan: dict[str, Any]) -> None:
     converted = convert_plan(plan)
     y_of = {room.type: room.xy[1] for room in converted.graph.rooms()}
-    assert y_of[RoomType.BEDROOM] < y_of[RoomType.LIVING] < y_of[RoomType.OUTDOOR]
+    assert y_of[RoomType.BEDROOM] < y_of[RoomType.LIVING] < y_of[RoomType.TERRACE]
 
 
 def test_coordinates_stay_on_the_grid(plan: dict[str, Any]) -> None:
