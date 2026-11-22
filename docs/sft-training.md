@@ -155,18 +155,18 @@ It is a sanity check, not an evaluation.
 ## Run it on ClearML
 
 ClearML is compute only, as in the baseline job: the launcher attaches the training file to the task, the agent trains, and after the job every output is downloaded and the task is deleted.
-The commit must be pushed and the tree clean, because the agent clones the commit.
+The tree must be clean, because the agent receives the source at HEAD (not your working tree).
 Credentials come from `~/clearml.conf` or the `CLEARML_*` environment variables and never enter the repository.
 
 ```bash
 # Show the plan; reads and validates the training file, touches neither ClearML nor the network.
-uv run --group ml python scripts/clearml_sft.py launch --train-file $TRAIN --dry-run
+uv run --group ml python scripts/clearml_sft.py launch --train-file $TRAIN --queue QUEUE --dry-run
 
 # Smoke run first, then collect.
-uv run --group ml python scripts/clearml_sft.py launch --train-file $TRAIN --smoke --wait
+uv run --group ml python scripts/clearml_sft.py launch --train-file $TRAIN --queue QUEUE --smoke --wait
 
 # Full run.
-uv run --group ml python scripts/clearml_sft.py launch --train-file $TRAIN --wait
+uv run --group ml python scripts/clearml_sft.py launch --train-file $TRAIN --queue QUEUE --wait
 
 # Or collect a finished task later.
 uv run --group ml python scripts/clearml_sft.py collect --task-id TASK_ID --run-name RUN_NAME
@@ -185,7 +185,9 @@ The collector is the baseline's: it deletes the task only after verification.
 
 A failed task is downloaded the same way, since its logs are the point, and then deleted.
 The job writes `job.log` into the result, which is the complete log.
-The agent installs the packages in `deploy/sft/requirements-sft.txt`, which a test keeps in step with the `ml` group.
+The agent cannot clone the private repository, so the launcher uploads the source with the task: `git archive HEAD` filtered again so that data, outputs and secret-looking files never leave the machine (`source_pack.py`).
+The task itself is the single script `scripts/sft_bootstrap.py`, which unpacks that archive, builds the environment from `uv.lock` with Python 3.12 (the agent image only has an older Python), and runs `scripts/sft_job.py` in it.
+`--queue` is required; list the workspace queues and their live workers first (for example with ClearML's `APIClient().workers.get_all()`).
 On the agent, a full run reports its loss curve to ClearML (`train.report_to = "clearml"`); a smoke run and a local run do not.
 Only metrics go there: the job sets `CLEARML_LOG_MODEL=false`, so checkpoints are not uploaded, since the result archive already carries the adapter.
 
@@ -206,6 +208,6 @@ Nothing here was run on the real 4B model or on ClearML: this code was written o
 Check these on the first real run:
 
 - peak memory and speed at `max_length` 5120 (the smoke run measures both),
-- that the torch wheel pinned in `deploy/sft/requirements-sft.txt` matches the agent's CUDA driver,
+- that the torch wheel locked in `uv.lock` matches the agent's CUDA driver,
 - that `report_to = "clearml"` attaches to the task created by `Task.create` on the agent,
 - the size of the result archive with the adapter snapshots (each adapter is fp32 and several hundred MB).

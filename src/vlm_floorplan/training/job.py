@@ -36,6 +36,7 @@ from vlm_floorplan.training.train import (
 log = logging.getLogger("sft_job")
 
 TRAIN_ARTIFACT = "sft_train"
+SOURCE_ARTIFACT = "repo_source"
 RESULT_ARTIFACT = "sft_run"
 SUMMARY = "job_summary.json"
 RUN_SUBDIR = "run"
@@ -49,7 +50,8 @@ class SftSpec(BaseModel):
 
     run_name: str
     project: str = "vlm-floorplan"
-    queue: str = "3090"
+    queue: str
+    """ClearML queue; required, because queue names differ between workspaces."""
     config: str = "configs/sft_stage1.toml"
     """Config file, relative to the repository root (the agent reads it from the commit)."""
     overrides: list[str] = Field(default_factory=list)
@@ -61,6 +63,7 @@ class SftSpec(BaseModel):
         """Flat string parameters, the form ClearML hyperparameters take."""
         return {
             "run_name": self.run_name,
+            "queue": self.queue,
             "config": self.config,
             "overrides": json.dumps(self.overrides),
             "smoke": "true" if self.smoke else "false",
@@ -71,6 +74,7 @@ def spec_from_parameters(params: dict[str, str]) -> SftSpec:
     """Rebuild the spec from the flat string parameters the launcher attached."""
     return SftSpec(
         run_name=params["run_name"],
+        queue=params["queue"],
         config=params["config"],
         overrides=json.loads(params["overrides"]),
         smoke=params["smoke"] == "true",

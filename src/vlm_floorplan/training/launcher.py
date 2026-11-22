@@ -6,9 +6,10 @@
     uv run --group ml python scripts/clearml_sft.py collect --task-id TASK_ID --run-name NAME
 
 This follows the zero-shot baseline launcher (`evaluation/launcher.py`) step for step: the
-training file travels as a task artifact, the task is created from a pushed git commit, and
+training file travels as a task artifact, and so does the repository source (`git archive` of
+HEAD, see `source_pack.py`), because the agent has no credentials to clone the private repo. And
 `collect` downloads everything, verifies it, and only then deletes the task. The ClearML adapter
-(`ClearMlTask`), git checks and waiting loop are shared with that launcher.
+(`ClearMlTask`), git state and waiting loop are shared with that launcher. `--queue` is required.
 
 Credentials are never read or written here; ClearML finds them in `~/clearml.conf` or the
 `CLEARML_*` environment variables. `--dry-run` touches neither ClearML nor the network.
@@ -39,10 +40,16 @@ from vlm_floorplan.evaluation.launcher import (
 )
 from vlm_floorplan.training.config import load_config
 from vlm_floorplan.training.data import read_samples
-from vlm_floorplan.training.job import RESULT_ARTIFACT, TRAIN_ARTIFACT, SftSpec, check_sft_result
+from vlm_floorplan.training.job import (
+    RESULT_ARTIFACT,
+    SOURCE_ARTIFACT,
+    TRAIN_ARTIFACT,
+    SftSpec,
+    check_sft_result,
+)
+from vlm_floorplan.training.source_pack import pack_repo_source
 
-JOB_SCRIPT = "scripts/sft_job.py"
-REQUIREMENTS = "deploy/sft/requirements-sft.txt"
+BOOTSTRAP_SCRIPT = REPO_ROOT / "scripts" / "sft_bootstrap.py"
 
 
 def pack_train_file(train_file: Path, archive: Path) -> int:
@@ -58,9 +65,10 @@ def describe_plan(spec: SftSpec, state: dict[str, Any], runs_dir: Path, samples:
     mode = "smoke test (a few steps, writes smoke.json)" if spec.smoke else "full training"
     steps = [
         f"gzip and attach the {samples} training samples as artifact {TRAIN_ARTIFACT!r}",
-        f"create task {spec.run_name!r} in project {spec.project!r} from "
-        f"{state['branch']} @ {state['commit'][:10]} ({state['remote']})",
-        f"install the packages in {REQUIREMENTS} on the agent",
+        f"attach the repository source at {state['branch']} @ {state['commit'][:10]} "
+        f"(git archive, no data or secrets) as artifact {SOURCE_ARTIFACT!r}",
+        f"create task {spec.run_name!r} in project {spec.project!r} from scripts/sft_bootstrap.py",
+        "on the agent: unpack the source, build the uv environment (Python 3.12) from uv.lock",
         f"enqueue on queue {spec.queue!r}",
         f"on the agent: {mode} with {spec.config}, upload one result archive",
         "wait for the job to finish",
@@ -71,9 +79,7 @@ def describe_plan(spec: SftSpec, state: dict[str, Any], runs_dir: Path, samples:
     ]
     warnings = []
     if state["dirty"]:
-        warnings.append("working tree has uncommitted changes (the agent only sees commits)")
-    if not state["pushed"]:
-        warnings.append("this commit is on no remote branch, so the agent cannot clone it")
+        warnings.append("working tree has uncommitted changes (the agent only gets HEAD)")
     lines = ["DRY RUN: nothing was sent to ClearML", "", "parameters:"]
     lines += [f"  {key} = {value}" for key, value in spec.job_parameters().items()]
     lines += ["", "steps:"] + [f"  {i}. {step}" for i, step in enumerate(steps, start=1)]
@@ -82,27 +88,35 @@ def describe_plan(spec: SftSpec, state: dict[str, Any], runs_dir: Path, samples:
     return "\n".join(lines)
 
 
+def clearml_version() -> str:
+    from importlib.metadata import version
+
+    return version("clearml")
+
+
 def create_and_enqueue(spec: SftSpec, train_file: Path, state: dict[str, Any]) -> str:
     from clearml import Task
 
     with tempfile.TemporaryDirectory(prefix="sft-train-") as tmp:
-        archive = Path(tmp) / "train.jsonl.gz"
-        pack_train_file(train_file, archive)
+        data = Path(tmp) / "train.jsonl.gz"
+        source = Path(tmp) / "repo_source.tar.gz"
+        pack_train_file(train_file, data)
+        pack_repo_source(REPO_ROOT, source)
+        # No `repo`: the task is the single bootstrap script, which unpacks the source artifact.
         task = Task.create(
             project_name=spec.project,
             task_name=spec.run_name,
             task_type="training",
-            repo=str(REPO_ROOT),
-            branch=state["branch"],
-            commit=state["commit"],
-            script=JOB_SCRIPT,
-            working_directory=".",
-            requirements_file=str(REPO_ROOT / REQUIREMENTS),
+            script=str(BOOTSTRAP_SCRIPT),
+            packages=[f"clearml=={clearml_version()}"],
             docker=spec.docker_image,
+            force_single_script_file=True,
+            detect_repository=False,
             add_task_init_call=False,
         )
         task.set_parameters({f"General/{k}": v for k, v in spec.job_parameters().items()})
-        task.upload_artifact(TRAIN_ARTIFACT, artifact_object=str(archive), wait_on_upload=True)
+        task.upload_artifact(TRAIN_ARTIFACT, artifact_object=str(data), wait_on_upload=True)
+        task.upload_artifact(SOURCE_ARTIFACT, artifact_object=str(source), wait_on_upload=True)
     Task.enqueue(task, queue_name=spec.queue)
     return task.id
 
@@ -135,7 +149,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--set", dest="overrides", action="append", default=[], metavar="SECTION.KEY=VALUE"
     )
     launch.add_argument("--smoke", action="store_true", help="a few steps; writes smoke.json")
-    launch.add_argument("--queue", default="3090")
+    launch.add_argument("--queue", required=True, help="ClearML queue with a GPU agent")
     launch.add_argument("--project", default="vlm-floorplan")
     launch.add_argument("--docker-image")
     launch.add_argument("--dry-run", action="store_true")
@@ -169,9 +183,7 @@ def _launch(args: argparse.Namespace) -> int:
         print(describe_plan(spec, state, args.runs_dir, samples))
         return 0
     if state["dirty"] and not args.allow_dirty:
-        sys.exit("refusing to launch: uncommitted changes (the agent only sees commits)")
-    if not state["pushed"]:
-        sys.exit("refusing to launch: this commit is not on any remote branch; push it first")
+        sys.exit("refusing to launch: uncommitted changes (the agent only gets HEAD)")
     task_id = create_and_enqueue(spec, args.train_file, state)
     print(f"enqueued task {task_id} on queue {spec.queue!r}")
     if not args.wait:

@@ -36,7 +36,7 @@ from vlm_floorplan.training.job import (  # noqa: E402
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     task = Task.init(project_name="vlm-floorplan", task_name="sft", reuse_last_task_id=False)
-    defaults = SftSpec(run_name="sft").job_parameters()
+    defaults = SftSpec(run_name="sft", queue="unset").job_parameters()
     spec = spec_from_parameters(task.connect(defaults))
 
     work = Path(tempfile.mkdtemp(prefix="sft-"))

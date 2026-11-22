@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import os
-import tomllib
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -42,13 +41,15 @@ def train_file(tmp_path: Path) -> Path:
 
 
 def test_job_parameters_round_trip_through_strings() -> None:
-    spec = SftSpec(run_name="r", overrides=["train.learning_rate=5e-5", "lora.r=16"], smoke=True)
+    spec = SftSpec(
+        queue="gpu", run_name="r", overrides=["train.learning_rate=5e-5", "lora.r=16"], smoke=True
+    )
     rebuilt = spec_from_parameters(spec.job_parameters())
     assert (rebuilt.run_name, rebuilt.overrides, rebuilt.smoke) == ("r", spec.overrides, True)
 
 
 def test_agent_config_uses_the_agents_paths_and_reports_to_clearml(tmp_path: Path) -> None:
-    spec = SftSpec(run_name="r", overrides=["train.learning_rate=5e-5"])
+    spec = SftSpec(queue="gpu", run_name="r", overrides=["train.learning_rate=5e-5"])
     config = agent_config(
         spec, REPO_ROOT, tmp_path / "t.jsonl", tmp_path / "run", report_to="clearml"
     )
@@ -59,14 +60,16 @@ def test_agent_config_uses_the_agents_paths_and_reports_to_clearml(tmp_path: Pat
 
 
 def test_smoke_job_does_not_report_to_clearml(tmp_path: Path) -> None:
-    spec = SftSpec(run_name="r", smoke=True)
+    spec = SftSpec(queue="gpu", run_name="r", smoke=True)
     config = agent_config(spec, REPO_ROOT, tmp_path / "t", tmp_path, report_to="clearml")
     assert config.train.report_to == "none"
 
 
 def test_a_local_full_job_keeps_the_config_report_to(tmp_path: Path) -> None:
     """Driving the job locally (tests, debugging) must not report to ClearML."""
-    config = agent_config(SftSpec(run_name="r"), REPO_ROOT, tmp_path / "t", tmp_path / "run")
+    config = agent_config(
+        SftSpec(queue="gpu", run_name="r"), REPO_ROOT, tmp_path / "t", tmp_path / "run"
+    )
     assert config.train.report_to == "none"
 
 
@@ -89,7 +92,17 @@ def test_dry_run_prints_the_plan_and_touches_nothing(
     train_file: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     code = main(
-        ["launch", "--train-file", str(train_file), "--dry-run", "--smoke", "--run-name", "r1"]
+        [
+            "launch",
+            "--train-file",
+            str(train_file),
+            "--queue",
+            "gpu",
+            "--dry-run",
+            "--smoke",
+            "--run-name",
+            "r1",
+        ]
     )
     out = capsys.readouterr().out
     assert code == 0
@@ -104,6 +117,8 @@ def test_dry_run_rejects_a_misspelled_override(train_file: Path) -> None:
                 "launch",
                 "--train-file",
                 str(train_file),
+                "--queue",
+                "gpu",
                 "--dry-run",
                 "--set",
                 "train.lerning_rate=1",
@@ -111,21 +126,17 @@ def test_dry_run_rejects_a_misspelled_override(train_file: Path) -> None:
         )
 
 
+def test_queue_is_required(train_file: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as err:
+        main(["launch", "--train-file", str(train_file), "--dry-run"])
+    assert err.value.code == 2
+    assert "--queue" in capsys.readouterr().err
+
+
 def test_describe_plan_warns_about_a_dirty_tree(tmp_path: Path) -> None:
     state = {"branch": "b", "commit": "c" * 40, "remote": "r", "dirty": True, "pushed": False}
-    text = describe_plan(SftSpec(run_name="r"), state, tmp_path, 5)
-    assert "uncommitted changes" in text and "no remote branch" in text
-
-
-def test_requirements_file_pins_the_ml_group() -> None:
-    project = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text())
-    pins = {r for r in project["dependency-groups"]["ml"] if "==" in r}
-    listed = {
-        line.strip()
-        for line in (REPO_ROOT / "deploy/sft/requirements-sft.txt").read_text().splitlines()
-        if line.strip() and not line.startswith("#")
-    }
-    assert pins <= listed
+    text = describe_plan(SftSpec(queue="gpu", run_name="r"), state, tmp_path, 5)
+    assert "uncommitted changes" in text
 
 
 # --- the job: the bundle is written whatever happens -------------------------------------------
@@ -139,7 +150,9 @@ def test_failed_training_still_produces_a_verifiable_bundle(
 
     monkeypatch.setattr(job_module, "run_training", explode)
     archive = tmp_path / "run.zip"
-    result = run_job(SftSpec(run_name="r"), REPO_ROOT, train_file, tmp_path / "out", archive)
+    result = run_job(
+        SftSpec(queue="gpu", run_name="r"), REPO_ROOT, train_file, tmp_path / "out", archive
+    )
 
     assert result["ok"] is False and "CUDA out of memory" in result["error"]
     extracted = tmp_path / "extracted"
@@ -178,7 +191,11 @@ def bundle(
     monkeypatch.setattr(job_module, "run_training", fake_training(files))
     archive = tmp_path / "run.zip"
     result = run_job(
-        SftSpec(run_name="r", smoke=smoke), REPO_ROOT, train_file, tmp_path / "out", archive
+        SftSpec(queue="gpu", run_name="r", smoke=smoke),
+        REPO_ROOT,
+        train_file,
+        tmp_path / "out",
+        archive,
     )
     assert result["ok"]
     return archive
@@ -330,7 +347,7 @@ def test_a_local_full_job_creates_no_clearml_task(
     seen: dict[str, Any] = {}
     monkeypatch.setattr(job_module, "run_training", capture_training(seen))
     out = tmp_path / "out"
-    result = run_job(SftSpec(run_name="r"), REPO_ROOT, train_file, out, tmp_path / "z")
+    result = run_job(SftSpec(queue="gpu", run_name="r"), REPO_ROOT, train_file, out, tmp_path / "z")
     assert result["ok"] and seen["report_to"] == "none"
     assert Task.current_task() is None
 
@@ -343,7 +360,7 @@ def test_a_job_reporting_to_clearml_does_not_upload_checkpoints(
     seen: dict[str, Any] = {}
     monkeypatch.setattr(job_module, "run_training", capture_training(seen))
     run_job(
-        SftSpec(run_name="r"),
+        SftSpec(queue="gpu", run_name="r"),
         REPO_ROOT,
         train_file,
         tmp_path / "out",
