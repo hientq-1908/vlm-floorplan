@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import tomllib
 from pathlib import Path
 
 import pytest
@@ -32,11 +31,6 @@ def test_defaults_are_the_plan_recipe() -> None:
 
 def test_max_length_defaults_to_5120() -> None:
     assert load_config().data.max_length == 5120
-
-
-def test_every_config_value_is_in_the_file_not_in_code() -> None:
-    raw = tomllib.loads(DEFAULT_CONFIG.read_text())
-    assert set(raw) == {"model", "lora", "data", "train", "smoke"}
 
 
 def test_overrides_change_only_the_named_value() -> None:

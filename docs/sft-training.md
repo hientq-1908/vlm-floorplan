@@ -111,10 +111,11 @@ uv sync --group ml
 TRAIN=/path/to/train.jsonl
 
 # 1. Smoke run: 4 optimizer steps on a slice, no model is saved.
+#    It writes to outputs/sft-stage1-smoke, next to the full run's directory.
 uv run --group ml python scripts/sft_train.py --smoke --set data.train_file=$TRAIN
 
 # 2. Read the result.
-cat outputs/sft-stage1/smoke/smoke.json
+cat outputs/sft-stage1-smoke/smoke.json
 
 # 3. Full run.
 uv run --group ml python scripts/sft_train.py --set data.train_file=$TRAIN
@@ -130,7 +131,7 @@ The longest sample makes the memory figure the worst case.
 
 - `tokens_per_second`: non-padding tokens per second over the steps after the first, which pays for warm-up,
 - `peak_memory_allocated_gib` and `peak_memory_reserved_gib` (under `gpu`; `null` without a GPU),
-- `step_seconds`, and `projected_hours_per_epoch` for the whole file at the measured speed.
+- `step_seconds`, and `projected_hours_per_epoch` for one epoch over the whole file at the measured speed.
 
 Plan section 6.3 estimates 750 to 1,000 tokens per second and says the real figure must be measured first.
 This is that measurement.

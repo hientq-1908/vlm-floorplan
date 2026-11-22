@@ -62,8 +62,9 @@ def test_templates_differ_once_a_second_user_turn_exists(qwen_tokenizer: Any) ->
 
 
 def test_training_template_is_the_one_trl_ships_for_qwen3_5_think(qwen_tokenizer: Any) -> None:
-    template = training_template(qwen_tokenizer)
-    assert "{% generation %}" in template or "{%- generation %}" in template
+    from trl.chat_template_utils import qwen3_5_think_training_chat_template
+
+    assert training_template(qwen_tokenizer) == qwen3_5_think_training_chat_template
 
 
 def test_unknown_chat_template_is_refused() -> None:

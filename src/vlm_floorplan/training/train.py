@@ -1,4 +1,4 @@
-"""The SFT run: `uv run --group ml python -m vlm_floorplan.training`.
+"""The SFT run: `uv run --group ml python scripts/sft_train.py`.
 
 Steps, in order:
 
@@ -10,7 +10,8 @@ Steps, in order:
 5. save the adapter to `<run dir>/adapter` and a summary to `<run dir>/train_summary.json`.
 
 `--smoke` does the same on a slice of a few optimizer steps and writes `smoke.json` with tokens
-per second and peak GPU memory (`smoke.py`). It never saves a model.
+per second and peak GPU memory (`smoke.py`). It never saves a model, and it writes to the sibling
+directory `<output_dir>-smoke`, so a smoke run never blocks the full run that follows it.
 
 The run directory holds everything a run produces: `run_config.json` (the resolved settings),
 `data_report.json`, `adapter/`, `checkpoint-*/` snapshots, `train_summary.json`, `smoke.json`.
@@ -40,8 +41,8 @@ SMOKE_FILE = "smoke.json"
 CONFIG_FILE = "run_config.json"
 
 
-def run_dir_for(config: TrainConfig, smoke: bool) -> Path:
-    return config.train.output_dir / "smoke" if smoke else config.train.output_dir
+def run_dir_for(output_dir: Path, smoke: bool) -> Path:
+    return output_dir.with_name(f"{output_dir.name}-smoke") if smoke else output_dir
 
 
 def check_run_dir_is_free(run_dir: Path) -> None:
@@ -114,7 +115,7 @@ def run_training(
     )
     from vlm_floorplan.training.smoke import SmokeMeter, select_smoke_slice
 
-    run_dir = run_dir_for(config, smoke)
+    run_dir = run_dir_for(config.train.output_dir, smoke)
     check_run_dir_is_free(run_dir)
     tokenizer = tokenizer or AutoTokenizer.from_pretrained(config.model.name)
     # Bad data fails here, before a run directory exists.
@@ -122,7 +123,6 @@ def run_training(
     run_dir.mkdir(parents=True, exist_ok=True)
     _write_json(run_dir / CONFIG_FILE, {"smoke": smoke, **config.model_dump(mode="json")})
     _write_json(run_dir / DATA_REPORT_FILE, report.to_json())
-    full_run_tokens = int(report.kept_tokens * config.train.num_epochs)
     if smoke:
         count = config.smoke.steps * config.train.gradient_accumulation_steps
         items = select_smoke_slice(items, count)
@@ -134,7 +134,7 @@ def run_training(
     model = model or load_base_model(config.model)
     log.info("froze %d vision tensors", freeze_vision(model))
 
-    callbacks = [SmokeMeter(run_dir / SMOKE_FILE, full_run_tokens)] if smoke else []
+    callbacks = [SmokeMeter(run_dir / SMOKE_FILE, report.kept_tokens)] if smoke else []
     trainer = SFTTrainer(
         model=model,
         args=make_sft_config(config, run_dir, smoke=smoke),

@@ -32,6 +32,7 @@ from vlm_floorplan.training.job import (
     spec_from_parameters,
 )
 from vlm_floorplan.training.launcher import describe_plan, main, pack_train_file
+from vlm_floorplan.training.train import run_dir_for
 
 
 @pytest.fixture
@@ -140,7 +141,7 @@ def test_failed_training_still_produces_a_verifiable_bundle(
 
 def fake_training(files: list[str]) -> Any:
     def run(config: Any, *, smoke: bool) -> Path:
-        run_dir = config.train.output_dir / ("smoke" if smoke else "")
+        run_dir = run_dir_for(config.train.output_dir, smoke)
         for name in files:
             (run_dir / name).parent.mkdir(parents=True, exist_ok=True)
             (run_dir / name).write_text("x")

@@ -144,6 +144,29 @@ def test_smoke_run_writes_speed_and_memory_and_no_adapter(
     assert report["dropped_count"] == 1
 
 
+def test_smoke_projection_covers_one_epoch_whatever_num_epochs_is(
+    tmp_path: Path, train_file: Path, max_length: int
+) -> None:
+    config = tiny_config(tmp_path, train_file, max_length, "train.num_epochs=2")
+    run_dir = run_training(config, smoke=True, model=tiny_qwen3_5_model())
+
+    smoke = json.loads((run_dir / "smoke.json").read_text())
+    report = json.loads((run_dir / "data_report.json").read_text())
+    assert smoke["epoch_tokens"] == report["kept_tokens"]
+
+
+def test_smoke_run_then_full_run_with_the_same_config(
+    tmp_path: Path, train_file: Path, max_length: int
+) -> None:
+    config = tiny_config(tmp_path, train_file, max_length)
+    smoke_dir = run_training(config, smoke=True, model=tiny_qwen3_5_model())
+    full_dir = run_training(config, model=tiny_qwen3_5_model())
+
+    assert (smoke_dir / "smoke.json").is_file()
+    assert (full_dir / "adapter" / "adapter_config.json").is_file()
+    assert not full_dir.is_relative_to(smoke_dir) and not smoke_dir.is_relative_to(full_dir)
+
+
 def test_existing_run_directory_is_never_reused(
     tmp_path: Path, train_file: Path, max_length: int
 ) -> None:

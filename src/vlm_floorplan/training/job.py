@@ -28,6 +28,7 @@ from vlm_floorplan.training.train import (
     DATA_REPORT_FILE,
     SMOKE_FILE,
     SUMMARY_FILE,
+    run_dir_for,
     run_training,
 )
 
@@ -131,7 +132,7 @@ def check_sft_result(result_dir: Path) -> list[str]:
         return [*checks, f"job did not succeed ({summary.get('error')}); logs kept"]
     run = result_dir / RUN_SUBDIR
     if summary.get("mode") == "smoke":
-        required = [run / "smoke" / SMOKE_FILE]
+        required = [run_dir_for(run, smoke=True) / SMOKE_FILE]
     else:
         adapter = run / ADAPTER_DIR
         required = [

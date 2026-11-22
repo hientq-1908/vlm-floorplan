@@ -82,7 +82,9 @@ def main(argv: list[str] | None = None) -> int:
 
     sample = read_samples(args.samples)[args.index]
     model = load_adapter_model(args.adapter, args.base)
-    tokenizer = AutoTokenizer.from_pretrained(model.peft_config["default"].base_model_name_or_path)
+    tokenizer = AutoTokenizer.from_pretrained(
+        args.base or model.peft_config["default"].base_model_name_or_path
+    )
     reply = generate_reply(model, tokenizer, sample, args.max_new_tokens)
 
     expected = sample.messages[len(first_request(sample))]

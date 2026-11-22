@@ -33,7 +33,7 @@ def run_steps(meter: SmokeMeter, clock: FakeClock, steps: list[tuple[float, int]
 
 def make_meter(tmp_path: Path, clock: FakeClock, gpu: dict | None = None) -> SmokeMeter:
     return SmokeMeter(
-        tmp_path / "smoke.json", full_run_tokens=3_600_000, clock=clock, memory=lambda: gpu
+        tmp_path / "smoke.json", epoch_tokens=3_600_000, clock=clock, memory=lambda: gpu
     )
 
 

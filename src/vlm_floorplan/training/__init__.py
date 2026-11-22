@@ -6,7 +6,7 @@ Read in this order:
 - `data.py`     JSONL samples to token ids and an assistant-only loss mask, with the length filter
 - `model.py`    base model, frozen vision tower, LoRA adapter
 - `smoke.py`    tokens per second and peak GPU memory
-- `train.py`    the training run itself (`python -m vlm_floorplan.training`)
+- `train.py`    the training run itself (`scripts/sft_train.py`)
 - `generate.py` quick generation check of a saved adapter
 - `job.py`, `launcher.py`   the ClearML side
 

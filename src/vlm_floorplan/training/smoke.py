@@ -7,7 +7,7 @@ slower. Smoke mode runs a few optimizer steps on a small slice and writes `smoke
 - `tokens_per_second`: non-padding tokens per second over the steps after the first (the first
   step pays for warm-up). With a single step it falls back to that step.
 - `peak_memory_allocated_gib` and `peak_memory_reserved_gib`: the GPU's high-water marks.
-- `projected_hours_per_epoch`: what the full set would take at the measured speed.
+- `projected_hours_per_epoch`: what one epoch over the full set would take at the measured speed.
 
 The slice always contains the longest kept sample, so the memory figure is the worst case.
 """
@@ -67,12 +67,12 @@ class SmokeMeter(TrainerCallback):
     def __init__(
         self,
         out_path: Path,
-        full_run_tokens: int,
+        epoch_tokens: int,
         clock: Callable[[], float] = time.perf_counter,
         memory: Callable[[], dict[str, Any] | None] = cuda_peak_memory,
     ):
         self.out_path = out_path
-        self.full_run_tokens = full_run_tokens
+        self.epoch_tokens = epoch_tokens
         self._clock = clock
         self._memory = memory
         self._start = 0.0
@@ -97,7 +97,7 @@ class SmokeMeter(TrainerCallback):
         else:
             (t0, n0), (t1, n1) = (0.0, 0), self._marks[0]
         tokens_per_second = (n1 - n0) / (t1 - t0) if t1 > t0 else 0.0
-        projected = self.full_run_tokens / tokens_per_second / 3600 if tokens_per_second else None
+        projected = self.epoch_tokens / tokens_per_second / 3600 if tokens_per_second else None
         return {
             "optimizer_steps": len(self._marks),
             "tokens_total": self._marks[-1][1],
@@ -107,7 +107,7 @@ class SmokeMeter(TrainerCallback):
                 for a, b in zip([(0.0, 0), *self._marks], self._marks, strict=False)
             ],
             "tokens_per_second": round(tokens_per_second, 1),
-            "full_run_tokens": self.full_run_tokens,
+            "epoch_tokens": self.epoch_tokens,
             "projected_hours_per_epoch": None if projected is None else round(projected, 1),
             "gpu": self._memory(),
         }
