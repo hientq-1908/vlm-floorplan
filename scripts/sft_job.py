@@ -45,7 +45,9 @@ def main() -> int:
     with gzip.open(packed, "rb") as src, train_file.open("wb") as dst:
         shutil.copyfileobj(src, dst)
 
-    result = run_job(spec, REPO_ROOT, train_file, work / "run", work / "run.zip")
+    result = run_job(
+        spec, REPO_ROOT, train_file, work / "run", work / "run.zip", report_to="clearml"
+    )
     task.upload_artifact(
         RESULT_ARTIFACT, artifact_object=str(work / "run.zip"), wait_on_upload=True
     )

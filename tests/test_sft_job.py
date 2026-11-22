@@ -7,6 +7,7 @@ the verify-then-delete order against a fake ClearML task.
 from __future__ import annotations
 
 import json
+import os
 import tomllib
 import zipfile
 from pathlib import Path
@@ -48,7 +49,9 @@ def test_job_parameters_round_trip_through_strings() -> None:
 
 def test_agent_config_uses_the_agents_paths_and_reports_to_clearml(tmp_path: Path) -> None:
     spec = SftSpec(run_name="r", overrides=["train.learning_rate=5e-5"])
-    config = agent_config(spec, REPO_ROOT, tmp_path / "t.jsonl", tmp_path / "run")
+    config = agent_config(
+        spec, REPO_ROOT, tmp_path / "t.jsonl", tmp_path / "run", report_to="clearml"
+    )
     assert config.train.learning_rate == 5e-5
     assert config.data.train_file == tmp_path / "t.jsonl"
     assert config.train.output_dir == tmp_path / "run"
@@ -56,7 +59,14 @@ def test_agent_config_uses_the_agents_paths_and_reports_to_clearml(tmp_path: Pat
 
 
 def test_smoke_job_does_not_report_to_clearml(tmp_path: Path) -> None:
-    config = agent_config(SftSpec(run_name="r", smoke=True), REPO_ROOT, tmp_path / "t", tmp_path)
+    spec = SftSpec(run_name="r", smoke=True)
+    config = agent_config(spec, REPO_ROOT, tmp_path / "t", tmp_path, report_to="clearml")
+    assert config.train.report_to == "none"
+
+
+def test_a_local_full_job_keeps_the_config_report_to(tmp_path: Path) -> None:
+    """Driving the job locally (tests, debugging) must not report to ClearML."""
+    config = agent_config(SftSpec(run_name="r"), REPO_ROOT, tmp_path / "t", tmp_path / "run")
     assert config.train.report_to == "none"
 
 
@@ -298,3 +308,46 @@ def test_failed_task_logs_are_kept_and_the_task_deleted(tmp_path: Path) -> None:
     assert (
         json.loads((tmp_path / "out" / "DOWNLOAD_VERIFIED.json").read_text())["status"] == "failed"
     )
+
+
+# --- ClearML: metrics only, and only from the agent ---------------------------------------------
+
+
+def capture_training(seen: dict[str, Any]) -> Any:
+    def run(config: Any, *, smoke: bool) -> Path:
+        seen["report_to"] = config.train.report_to
+        seen["log_model"] = os.environ.get("CLEARML_LOG_MODEL")
+        return run_dir_for(config.train.output_dir, smoke)
+
+    return run
+
+
+def test_a_local_full_job_creates_no_clearml_task(
+    train_file: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from clearml import Task
+
+    seen: dict[str, Any] = {}
+    monkeypatch.setattr(job_module, "run_training", capture_training(seen))
+    out = tmp_path / "out"
+    result = run_job(SftSpec(run_name="r"), REPO_ROOT, train_file, out, tmp_path / "z")
+    assert result["ok"] and seen["report_to"] == "none"
+    assert Task.current_task() is None
+
+
+def test_a_job_reporting_to_clearml_does_not_upload_checkpoints(
+    train_file: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """transformers' ClearMLCallback uploads every checkpoint unless CLEARML_LOG_MODEL is false."""
+    monkeypatch.delenv("CLEARML_LOG_MODEL", raising=False)
+    seen: dict[str, Any] = {}
+    monkeypatch.setattr(job_module, "run_training", capture_training(seen))
+    run_job(
+        SftSpec(run_name="r"),
+        REPO_ROOT,
+        train_file,
+        tmp_path / "out",
+        tmp_path / "z",
+        report_to="clearml",
+    )
+    assert seen == {"report_to": "clearml", "log_model": "false"}

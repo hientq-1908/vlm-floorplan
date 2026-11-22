@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -76,22 +77,45 @@ def spec_from_parameters(params: dict[str, str]) -> SftSpec:
     )
 
 
-def agent_config(spec: SftSpec, repo_root: Path, train_file: Path, run_dir: Path) -> TrainConfig:
-    """The config the agent runs: the launch overrides, then the agent's own paths."""
+def agent_config(
+    spec: SftSpec,
+    repo_root: Path,
+    train_file: Path,
+    run_dir: Path,
+    *,
+    report_to: str | None = None,
+) -> TrainConfig:
+    """The config the agent runs: the launch overrides, then the agent's own paths.
+
+    `report_to` replaces the config's `train.report_to` for a full run; `None` keeps the config
+    value, so a local drive of the job does not contact ClearML. Only `scripts/sft_job.py`, on the
+    agent, passes `"clearml"`.
+    """
     overrides = [
         *spec.overrides,
         f"data.train_file={json.dumps(str(train_file))}",
         f"train.output_dir={json.dumps(str(run_dir))}",
     ]
-    if not spec.smoke:
-        overrides.append('train.report_to="clearml"')
+    if report_to is not None and not spec.smoke:
+        overrides.append(f"train.report_to={json.dumps(report_to)}")
     return load_config(repo_root / spec.config, overrides)
 
 
 def run_job(
-    spec: SftSpec, repo_root: Path, train_file: Path, out_dir: Path, archive: Path
+    spec: SftSpec,
+    repo_root: Path,
+    train_file: Path,
+    out_dir: Path,
+    archive: Path,
+    *,
+    report_to: str | None = None,
 ) -> dict[str, Any]:
-    """Train (or smoke-test), then bundle `out_dir` into `archive`. The bundle is always written."""
+    """Train (or smoke-test), then bundle `out_dir` into `archive`. The bundle is always written.
+
+    When the run reports to ClearML, only metrics go there: transformers' ClearMLCallback uploads
+    every checkpoint unless `CLEARML_LOG_MODEL` is false, and the result archive already carries
+    the adapter.
+    """
     out_dir.mkdir(parents=True, exist_ok=True)
     file_handler = logging.FileHandler(out_dir / "job.log")
     file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
@@ -102,7 +126,11 @@ def run_job(
         "error": None,
     }
     try:
-        config = agent_config(spec, repo_root, train_file, out_dir / RUN_SUBDIR)
+        config = agent_config(
+            spec, repo_root, train_file, out_dir / RUN_SUBDIR, report_to=report_to
+        )
+        if config.train.report_to == "clearml":
+            os.environ["CLEARML_LOG_MODEL"] = "false"
         run_training(config, smoke=spec.smoke)
         result["ok"] = True
     except Exception as err:  # the bundle below must still be written
