@@ -234,4 +234,5 @@ Without `--records` it uses the built-in sample plan, so it also runs with no da
   The floorplan image is not attached yet, so the model reads the plan from `summarize_graph`.
 - The rendered view and the tool schemas were checked against the Qwen3.5-4B chat template.
   The call format was not run against a live vLLM server here.
-- `delete_room` needs a room with at least one link, a size, a known type and a label short enough for `add_room`, and `draw_plan` needs a size on every room and is limited to plans of twelve rooms or fewer, because it copies the whole plan into one call.
+- Every task kind needs a single-floor plan where every room has a size and the exterior wall is present (see `docs/architecture.md`).
+- `delete_room` needs a room with at least one link, a known type and a label short enough for `add_room`, and `draw_plan` is limited to plans of twelve rooms or fewer, because it copies the whole plan into one call.
