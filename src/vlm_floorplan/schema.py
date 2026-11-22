@@ -155,7 +155,7 @@ class FloorplanGraph(BaseModel):
     """The outline of the building as a closed polygon of grid points, or None when unknown.
 
     Input only: the model reads it and never writes it, so edits and `new_plan` keep it.
-    Indoor rooms lie inside it and outdoor rooms outside, against it.
+    Indoor rooms lie inside it and terraces outside, against it.
     """
 
     @model_validator(mode="after")
