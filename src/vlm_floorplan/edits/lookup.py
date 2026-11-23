@@ -41,7 +41,7 @@ def next_room_id(graph: FloorplanGraph) -> str:
 def replace_floor(graph: FloorplanGraph, index: int, floor: Floor) -> FloorplanGraph:
     """A new graph with one floor swapped. Re-runs the schema's validators."""
     floors = [*graph.floors[:index], floor, *graph.floors[index + 1 :]]
-    return FloorplanGraph(floors=floors, image=graph.image)
+    return FloorplanGraph(floors=floors, image=graph.image, exterior_wall=graph.exterior_wall)
 
 
 def rebuilt_room(room: Room, **changes: object) -> Room:

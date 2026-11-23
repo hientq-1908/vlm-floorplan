@@ -47,7 +47,7 @@ def test_tool_messages_carry_the_real_environment_response() -> None:
     episode = build_episode(RECORD, DeleteRoomTask("r1"))
     tools = [m for m in episode["messages"] if m["role"] == "tool"]
     assert tools[0]["name"] == "add_room"
-    assert tools[0]["content"].startswith("OK: added bathroom room r6 at (500, 200)")
+    assert tools[0]["content"].startswith("OK: added bathroom room r6 at (500, 200).\nWarning")
     assert all(m["content"].startswith("OK:") for m in tools)
 
 
@@ -62,13 +62,13 @@ def test_the_draw_plan_episode_is_one_new_plan_call() -> None:
     episode = build_episode(RECORD, DrawPlanTask())
     calls = [m["tool_calls"][0]["function"] for m in episode["messages"] if m.get("tool_calls")]
     assert [call["name"] for call in calls] == ["new_plan"]
-    assert json.loads(calls[0]["arguments"]["plan"])["floors"]
+    assert set(json.loads(calls[0]["arguments"]["plan"])) == {"rooms", "links"}
     assert episode["reward"] == pytest.approx(1.0)
 
 
-def test_the_record_carries_all_eleven_tools_and_is_json() -> None:
+def test_the_record_carries_all_twelve_tools_and_is_json() -> None:
     episode = build_episode(RECORD, DeleteRoomTask("r1"))
-    assert len(episode["tools"]) == 11
+    assert len(episode["tools"]) == 12
     assert json.loads(json.dumps(episode)) == episode
 
 
@@ -105,6 +105,47 @@ def test_delete_room_tasks_skip_rooms_add_room_would_refuse() -> None:
     tasks = candidate_tasks(_with_long_label("r5"), "delete_room")
     assert "r5" not in {task.room_id for task in tasks}
     assert tasks
+
+
+def _without_size(room_id: str) -> PlanRecord:
+    graph = RECORD.graph
+    floors = [
+        floor.model_copy(
+            update={
+                "rooms": [
+                    room.model_copy(update={"size": None}) if room.id == room_id else room
+                    for room in floor.rooms
+                ]
+            }
+        )
+        for floor in graph.floors
+    ]
+    return RECORD.model_copy(update={"graph": graph.model_copy(update={"floors": floors})})
+
+
+def _without_wall() -> PlanRecord:
+    graph = RECORD.graph.model_copy(update={"exterior_wall": None})
+    return RECORD.model_copy(update={"graph": graph})
+
+
+@pytest.mark.parametrize("kind", TASK_KINDS)
+def test_a_plan_with_a_sizeless_room_yields_no_tasks(kind: str) -> None:
+    assert candidate_tasks(RECORD, kind)
+    assert candidate_tasks(_without_size("r2"), kind) == []
+
+
+@pytest.mark.parametrize("kind", TASK_KINDS)
+def test_a_plan_without_an_exterior_wall_yields_no_tasks(kind: str) -> None:
+    assert candidate_tasks(RECORD, kind)
+    assert candidate_tasks(_without_wall(), kind) == []
+
+
+def test_the_delete_room_request_gives_the_size_add_room_uses() -> None:
+    episode = build_episode(RECORD, DeleteRoomTask("r5"))
+    request = episode["messages"][1]["content"].split("Request: ")[1]
+    assert request.startswith("Add a storage room at (850, 850), size 169.")
+    add_room = episode["messages"][2]["tool_calls"][0]["function"]["arguments"]
+    assert add_room["size"] == 169
 
 
 def test_the_delete_room_reply_lists_the_links_in_plain_english() -> None:

@@ -31,9 +31,9 @@ The schema lives in `src/vlm_floorplan/schema.py`.
 It is the contract between every part of the project: converters, the viewer, the model's output parser, and the edit tools (`docs/edit-operations.md`).
 
 ```text
-FloorplanGraph { floors: [Floor], image: {w, h} }
+FloorplanGraph { floors: [Floor], image: {w, h}, exterior_wall: [[x, y], ...] | None }
 Floor          { floor: int, rooms: [Room], links: [Link] }
-Room           { id: "r<n>", type, label?, xy: [x, y], entrance? }
+Room           { id: "r<n>", type, label?, xy: [x, y], size?, entrance? }
 Link           { a: room id, b: room id, kind: door | opening | wall }
 ```
 
@@ -50,6 +50,19 @@ The centroid of an L-shaped room can lie outside it.
 The converters use shapely's `representative_point()`, which always lies inside the polygon.
 This also gives a simple evaluation rule: a predicted room matches the ground-truth room whose polygon contains the predicted point, with no matching heuristic.
 That is why `PlanRecord` keeps the room polygons even though the model only outputs points.
+
+**A room has a size, the radius of a circle with its area; the plan has an exterior wall.**
+`size` (1 to 500, on the same grid as `xy`) tells the model how big a room is without a box and without a metre scale, so it works for every source.
+It is optional in the graph, because the converters do not write it yet, but the model-facing forms carry it: the plan text, `new_plan` and `add_room` require it, and `set_room_size` changes it.
+So tasks (`agent/tasks.py`) are only built from plans where every room has a size and the exterior wall is present.
+The converters do not write either yet, so raw converter records yield no episodes until the dataset build adds them (a separate follow-up).
+`exterior_wall` is the building outline as a polygon of grid points, shown to the model on the second line of the plan text and never written by it.
+Indoor rooms go inside it and terraces outside it, against it.
+Edits and `new_plan` keep it.
+
+**The model sees one floor.**
+The plan text and the compact JSON have no floor header, field or wrapper, and the tools take no floor argument.
+The graph underneath keeps its list of floors (converters and the validator still work on it), always with exactly one for what the model reads and writes.
 
 **Rooms are points only, with no bbox.**
 The graph is what the user edits, by chat or by dragging a room, and a drag moves one point.
@@ -102,13 +115,16 @@ The raw source label is kept next to the coarse type, in `PlanRecord.rooms[...].
 The model reads and writes a compact text form (`compact.py`):
 
 ```json
-{"floors":[{"floor":1,"rooms":[{"id":"r0","type":"terrace","xy":[564,839]},{"id":"r2","type":"entry","xy":[474,735]}],"links":[["r0","r2","door"]]}]}
+{"rooms":[{"id":"r0","type":"terrace","xy":[564,839],"size":90},{"id":"r2","type":"entry","xy":[474,735],"size":52}],"links":[["r0","r2","door"]]}
 ```
 
-It has no whitespace, links are `[a, b, kind]` triples, optional fields appear only when set, and the image size is left out.
+It has no whitespace, no floor (the model sees one floor; the graph underneath still holds a list), links are `[a, b, kind]` triples, optional fields appear only when set, and the image size is left out.
+`size` is the radius of a circle with the room's area, on the same 0-1000 grid as `xy`.
+The exterior wall is input only: the model reads it in the plan text and never writes it, so it is not in this form.
 In the roadmap check, the median graph was 365 tokens and the largest was 877.
 Graph text is cheap next to the image: a 1024 px image costs about 768 tokens.
-`from_compact(to_compact(graph), image) == graph` holds for every valid graph, and the tests check it.
+`from_compact(to_compact(graph), image, graph.exterior_wall) == graph` holds for every valid single-floor graph, and the tests check it.
+The zero-shot perception baseline keeps its own `floors` form (`evaluation/floors_json.py`), because its prompt is versioned and may describe several floors.
 
 ## Graph versus record
 

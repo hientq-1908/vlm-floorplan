@@ -13,7 +13,8 @@ Design notes (see docs/architecture.md for the full reasoning):
 - `xy` is a point guaranteed to lie inside the room, not its centroid
   (the centroid of an L-shaped room can fall outside it).
 - One image can show several floors side by side, so a graph holds a list of
-  per-floor graphs. Links never cross floors.
+  per-floor graphs. Links never cross floors. What the model reads and writes is single-floor:
+  the text and JSON forms (`summary.py`, `compact.py`) carry no floor at all.
 - The validators here are the contract that converters, the model's output
   parser, and (later) the edit tools all rely on.
 """
@@ -29,6 +30,9 @@ GRID_MAX = 1000
 """Coordinates run from 0 to GRID_MAX inclusive on both axes."""
 
 GridCoord = Annotated[int, Field(ge=0, le=GRID_MAX)]
+MAX_ROOM_SIZE = GRID_MAX // 2
+"""A room's size is a radius on the grid, so half the grid is the most that fits."""
+RoomSize = Annotated[int, Field(ge=1, le=MAX_ROOM_SIZE)]
 RoomId = Annotated[str, Field(pattern=r"^r\d+$")]
 
 
@@ -78,6 +82,11 @@ class Room(BaseModel):
     label: str | None = None
     """The room's name as printed on the plan, if any (often a Finnish abbreviation)."""
     xy: tuple[GridCoord, GridCoord]
+    size: RoomSize | None = None
+    """Radius of a circle with the room's area, on the same 0-1000 grid as `xy`.
+
+    Relative to the canvas, so it needs no metre scale. None when the source has no size.
+    """
     entrance: bool = False
     """True when an exterior door opens into this room."""
 
@@ -113,20 +122,15 @@ class Floor(BaseModel):
         seen_pairs: set[frozenset[str]] = set()
         for link in self.links:
             if link.a == link.b:
-                raise ValueError(
-                    f"floor {self.floor}: link {link.a}-{link.b} links a room to itself"
-                )
+                raise ValueError(f"link {link.a}-{link.b} links a room to itself")
             for end in (link.a, link.b):
                 if end not in room_ids:
                     raise ValueError(
-                        f"floor {self.floor}: link {link.a}-{link.b} refers to {end},"
-                        " which is not a room on this floor"
+                        f"link {link.a}-{link.b} refers to {end}, which is not a room in the plan"
                     )
             # One link per room pair: a pair is either door-, opening- or wall-connected.
             if link.pair in seen_pairs:
-                raise ValueError(
-                    f"floor {self.floor}: duplicate link between {link.a} and {link.b}"
-                )
+                raise ValueError(f"duplicate link between {link.a} and {link.b}")
             seen_pairs.add(link.pair)
         return self
 
@@ -147,6 +151,12 @@ class FloorplanGraph(BaseModel):
 
     floors: Annotated[list[Floor], Field(min_length=1)]
     image: ImageSize
+    exterior_wall: Annotated[list[tuple[GridCoord, GridCoord]], Field(min_length=3)] | None = None
+    """The outline of the building as a closed polygon of grid points, or None when unknown.
+
+    Input only: the model reads it and never writes it, so edits and `new_plan` keep it.
+    Indoor rooms lie inside it and terraces outside, against it.
+    """
 
     @model_validator(mode="after")
     def _check_ids(self) -> FloorplanGraph:

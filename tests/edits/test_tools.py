@@ -26,7 +26,8 @@ def test_there_is_one_tool_per_op_named_after_it() -> None:
     assert names == list(OP_CLASSES)
     assert sorted(names) == sorted(
         [
-            "add_room", "move_room", "delete_room", "set_room_type", "set_room_label",
+            "add_room", "move_room", "set_room_size", "delete_room", "set_room_type",
+            "set_room_label",
             "add_link", "remove_link", "set_link_kind", "add_exterior_door", "remove_exterior_door",
         ]
     )  # fmt: skip
@@ -66,7 +67,8 @@ def test_required_lists_only_arguments_without_defaults() -> None:
     required = {
         s["function"]["name"]: set(s["function"]["parameters"]["required"]) for s in tool_schemas()
     }
-    assert required["add_room"] == {"type", "x", "y"}
+    assert required["add_room"] == {"type", "x", "y", "size"}
+    assert required["set_room_size"] == {"room_id", "size"}
     assert required["add_link"] == {"room_a", "room_b", "kind"}
     assert required["add_exterior_door"] == {"room_id"}
     assert required["set_room_label"] == {"room_id", "label"}

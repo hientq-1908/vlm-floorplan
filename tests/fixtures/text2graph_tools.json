@@ -1,0 +1,339 @@
+[
+ {
+  "type": "function",
+  "function": {
+   "name": "add_room",
+   "description": "Add a new room. The room starts with no links; link it with add_link.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "type": {
+      "description": "The room type.",
+      "enum": [
+       "living",
+       "kitchen",
+       "dining",
+       "bedroom",
+       "bathroom",
+       "entry",
+       "storage",
+       "utility",
+       "terrace",
+       "garage",
+       "stairs",
+       "other",
+       "unknown"
+      ],
+      "type": "string"
+     },
+     "x": {
+      "description": "A point inside the room. Horizontal position on the 0-1000 grid, 0 = left edge of the image.",
+      "maximum": 1000,
+      "minimum": 0,
+      "type": "integer"
+     },
+     "y": {
+      "description": "A point inside the room. Vertical position on the 0-1000 grid, 0 = top edge of the image.",
+      "maximum": 1000,
+      "minimum": 0,
+      "type": "integer"
+     },
+     "label": {
+      "maxLength": 40,
+      "type": "string",
+      "description": "The room's name as it should be shown, for example 'Master bedroom'."
+     },
+     "size": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 500,
+      "description": "Room size on the 0-1000 grid: the radius of a circle with the room's area."
+     }
+    },
+    "required": [
+     "type",
+     "x",
+     "y",
+     "size"
+    ]
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "move_room",
+   "description": "Move a room to a new position. Its links and type stay as they are.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "room_id": {
+      "description": "The room to move.",
+      "pattern": "^r\\d+$",
+      "type": "string"
+     },
+     "x": {
+      "description": "New position. Horizontal position on the 0-1000 grid, 0 = left edge of the image.",
+      "maximum": 1000,
+      "minimum": 0,
+      "type": "integer"
+     },
+     "y": {
+      "description": "New position. Vertical position on the 0-1000 grid, 0 = top edge of the image.",
+      "maximum": 1000,
+      "minimum": 0,
+      "type": "integer"
+     }
+    },
+    "required": [
+     "room_id",
+     "x",
+     "y"
+    ]
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "delete_room",
+   "description": "Delete a room and every link that touches it.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "room_id": {
+      "description": "The room to delete.",
+      "pattern": "^r\\d+$",
+      "type": "string"
+     }
+    },
+    "required": [
+     "room_id"
+    ]
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "set_room_type",
+   "description": "Change a room's type, for example from bedroom to office (type 'other').",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "room_id": {
+      "description": "The room to change.",
+      "pattern": "^r\\d+$",
+      "type": "string"
+     },
+     "type": {
+      "description": "The new room type.",
+      "enum": [
+       "living",
+       "kitchen",
+       "dining",
+       "bedroom",
+       "bathroom",
+       "entry",
+       "storage",
+       "utility",
+       "terrace",
+       "garage",
+       "stairs",
+       "other",
+       "unknown"
+      ],
+      "type": "string"
+     }
+    },
+    "required": [
+     "room_id",
+     "type"
+    ]
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "set_room_label",
+   "description": "Rename a room. An empty label removes the name.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "room_id": {
+      "description": "The room to rename.",
+      "pattern": "^r\\d+$",
+      "type": "string"
+     },
+     "label": {
+      "description": "The new name. Use an empty string to remove the name.",
+      "maxLength": 40,
+      "type": "string"
+     }
+    },
+    "required": [
+     "room_id",
+     "label"
+    ]
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "add_link",
+   "description": "Link two rooms on the same floor that are not linked yet. Use kind 'wall' to say that two rooms are next to each other with a wall between them. A door or opening needs that wall first: add a 'wall' link, then change it with set_link_kind. Rooms that are already linked are changed only with set_link_kind.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "room_a": {
+      "description": "One of the two rooms.",
+      "pattern": "^r\\d+$",
+      "type": "string"
+     },
+     "room_b": {
+      "description": "The other room.",
+      "pattern": "^r\\d+$",
+      "type": "string"
+     },
+     "kind": {
+      "description": "Use 'wall'. For a door or opening, add a wall, then use set_link_kind.",
+      "enum": [
+       "door",
+       "opening",
+       "wall"
+      ],
+      "type": "string"
+     }
+    },
+    "required": [
+     "room_a",
+     "room_b",
+     "kind"
+    ]
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "remove_link",
+   "description": "Remove the link between two rooms completely, so they are no longer adjacent. To close a door in a wall that stays, use set_link_kind with kind 'wall' instead.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "room_a": {
+      "description": "One of the two rooms.",
+      "pattern": "^r\\d+$",
+      "type": "string"
+     },
+     "room_b": {
+      "description": "The other room.",
+      "pattern": "^r\\d+$",
+      "type": "string"
+     }
+    },
+    "required": [
+     "room_a",
+     "room_b"
+    ]
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "set_link_kind",
+   "description": "Change how two already linked rooms connect (door, opening, wall).",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "room_a": {
+      "description": "One of the two rooms.",
+      "pattern": "^r\\d+$",
+      "type": "string"
+     },
+     "room_b": {
+      "description": "The other room.",
+      "pattern": "^r\\d+$",
+      "type": "string"
+     },
+     "kind": {
+      "description": "The new kind: door, opening, or wall.",
+      "enum": [
+       "door",
+       "opening",
+       "wall"
+      ],
+      "type": "string"
+     }
+    },
+    "required": [
+     "room_a",
+     "room_b",
+     "kind"
+    ]
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "add_exterior_door",
+   "description": "Mark that an exterior door opens into a room (any outside door, not only the front door).",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "room_id": {
+      "description": "The room the outside door opens into.",
+      "pattern": "^r\\d+$",
+      "type": "string"
+     }
+    },
+    "required": [
+     "room_id"
+    ]
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "remove_exterior_door",
+   "description": "Remove the exterior door from a room (it no longer has a door to the outside).",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "room_id": {
+      "description": "The room that has the outside door.",
+      "pattern": "^r\\d+$",
+      "type": "string"
+     }
+    },
+    "required": [
+     "room_id"
+    ]
+   }
+  }
+ },
+ {
+  "type": "function",
+  "function": {
+   "name": "new_plan",
+   "description": "Draw a whole new plan from scratch. It replaces the current plan, so use it only when there is nothing to keep; to change the current plan use the other tools.",
+   "parameters": {
+    "type": "object",
+    "properties": {
+     "plan": {
+      "type": "string",
+      "description": "The plan as compact JSON on one line: rooms (id r0, r1, ..., type, xy on the 0-1000 grid, size = the radius of a circle with the room's area on the same grid, optional label, optional entrance: true for a room an outside door opens into) and links [a, b, kind] with kind door, opening or wall. For example: {\"rooms\":[{\"id\":\"r0\",\"type\":\"entry\",\"xy\":[474,735],\"size\":52,\"entrance\":true},{\"id\":\"r1\",\"type\":\"living\",\"label\":\"OH\",\"xy\":[583,295],\"size\":160}],\"links\":[[\"r0\",\"r1\",\"door\"]]}"
+     }
+    },
+    "required": [
+     "plan"
+    ]
+   }
+  }
+ }
+]

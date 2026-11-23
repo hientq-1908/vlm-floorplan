@@ -16,6 +16,8 @@ r2-r4 door, r3-r4 door, r3-r5 wall, r4-r5 door.
 
 from __future__ import annotations
 
+import math
+
 from vlm_floorplan.record import PlanQuality, PlanRecord, RoomSource
 from vlm_floorplan.schema import Floor, FloorplanGraph, ImageSize, Link, Room
 
@@ -46,13 +48,16 @@ def sample_record() -> PlanRecord:
             id=room_id,
             type=room_type,
             xy=((x1 + x2) // 2, (y1 + y2) // 2),
+            size=round(math.sqrt((x2 - x1) * (y2 - y1) / math.pi)),
             entrance=room_id == "r4",
         )
         for room_id, (room_type, (x1, y1, x2, y2)) in _BOXES.items()
     ]
     links = [Link(a=a, b=b, kind=kind) for a, b, kind in _LINKS]
     graph = FloorplanGraph(
-        floors=[Floor(floor=1, rooms=rooms, links=links)], image=ImageSize(w=800, h=800)
+        floors=[Floor(floor=1, rooms=rooms, links=links)],
+        image=ImageSize(w=800, h=800),
+        exterior_wall=[(0, 0), (1000, 0), (1000, 1000), (0, 1000)],
     )
     sources = {
         room_id: RoomSource(

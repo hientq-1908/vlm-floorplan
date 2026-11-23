@@ -17,7 +17,8 @@ Design notes:
   so they say what the op does and when to use it, not how it is implemented.
 - Ops are frozen. Op-local rules (a coordinate is on the grid) are checked here;
   rules that need the graph (does the room exist?) are checked when the op is applied.
-- A room is a point, so ops place a room by its point alone.
+- A room is a point with a size (a radius), so ops place a room by its point and size alone.
+- The plan is single-floor at this boundary: ops carry no floor.
 """
 
 from __future__ import annotations
@@ -26,11 +27,12 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator
 
-from vlm_floorplan.schema import GridCoord, LinkKind, RoomId, RoomType
+from vlm_floorplan.schema import GridCoord, LinkKind, RoomId, RoomSize, RoomType
 
 MAX_LABEL_LENGTH = 40
 
 _X = "Horizontal position on the 0-1000 grid, 0 = left edge of the image."
+_SIZE = "the radius of a circle with the room's area."
 _Y = "Vertical position on the 0-1000 grid, 0 = top edge of the image."
 
 
@@ -51,7 +53,7 @@ def _strip_label(value: str) -> str:
 
 
 class AddRoom(_Op):
-    """Add a new room to a floor. The room starts with no links; link it with add_link."""
+    """Add a new room. The room starts with no links; link it with add_link."""
 
     op: Literal["add_room"] = "add_room"
     type: RoomType = Field(description="The room type.")
@@ -62,10 +64,7 @@ class AddRoom(_Op):
         max_length=MAX_LABEL_LENGTH,
         description="The room's name as it should be shown, for example 'Master bedroom'.",
     )
-    floor: int | None = Field(
-        default=None,
-        description="Floor number. Only needed when the plan has more than one floor.",
-    )
+    size: RoomSize = Field(description=f"Room size on the 0-1000 grid: {_SIZE}")
     room_id: RoomId | None = Field(
         default=None,
         description="Leave out: the next free id is assigned. Replays and tests set it.",
@@ -81,6 +80,14 @@ class MoveRoom(_Op):
     room_id: RoomId = Field(description="The room to move.")
     x: GridCoord = Field(description=f"New position. {_X}")
     y: GridCoord = Field(description=f"New position. {_Y}")
+
+
+class SetRoomSize(_Op):
+    """Resize a room. Its position, links and type stay as they are."""
+
+    op: Literal["set_room_size"] = "set_room_size"
+    room_id: RoomId = Field(description="The room to resize.")
+    size: RoomSize = Field(description=f"The new size on the 0-1000 grid: {_SIZE}")
 
 
 class DeleteRoom(_Op):
@@ -164,6 +171,7 @@ class RemoveExteriorDoor(_Op):
 EditOp = Annotated[
     AddRoom
     | MoveRoom
+    | SetRoomSize
     | DeleteRoom
     | SetRoomType
     | SetRoomLabel
@@ -180,6 +188,7 @@ OP_CLASSES: dict[str, type[_Op]] = {
     for cls in (
         AddRoom,
         MoveRoom,
+        SetRoomSize,
         DeleteRoom,
         SetRoomType,
         SetRoomLabel,
@@ -221,6 +230,7 @@ __all__ = [
     "RemoveLink",
     "SetLinkKind",
     "SetRoomLabel",
+    "SetRoomSize",
     "SetRoomType",
     "dump_ops",
     "load_ops",

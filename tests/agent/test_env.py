@@ -52,9 +52,11 @@ def test_the_damaged_plan_scores_below_the_scripted_solution(task: Task) -> None
 def test_reset_returns_the_damaged_plan_and_the_request() -> None:
     env = FloorplanEditEnv()
     prompt = env.reset(RECORD, DeleteRoomTask("r1"))
-    assert prompt.startswith("Current plan:\nfloor 1: 5 rooms")
+    assert prompt.startswith(
+        "Current plan:\nplan: 5 rooms, 6 links\nexterior wall: (0, 0), (1000, 0)"
+    )
     assert "r1 bathroom" not in prompt.split("Request:")[0]
-    assert "Request: Add a bathroom at (500, 200)." in prompt
+    assert "Request: Add a bathroom at (500, 200), size 160." in prompt
     assert "a door to r3 (living)" in prompt
     assert "a shared wall with r0 (bedroom)" in prompt
 
