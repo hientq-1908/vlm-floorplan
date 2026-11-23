@@ -15,10 +15,11 @@ from __future__ import annotations
 
 import random
 from collections import Counter
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from concurrent.futures import ThreadPoolExecutor
 
 from vlm_floorplan.requirements import apply_labels, derive_requirements, requirements_to_json
+from vlm_floorplan.text2graph.leak import normalize_text
 from vlm_floorplan.text2graph.paraphrase import Teacher
 from vlm_floorplan.text2graph.pools import Candidate
 from vlm_floorplan.text2graph.rows import PromptRow, empty_start
@@ -46,9 +47,18 @@ def level_sequence(n: int, rng: random.Random) -> list[int]:
 
 
 def make_prompt(
-    candidate: Candidate, level: int, set_name: str, number: int, rng: random.Random
+    candidate: Candidate,
+    level: int,
+    set_name: str,
+    number: int,
+    rng: random.Random,
+    forbidden: Collection[str] = (),
 ) -> PromptRow | None:
-    """One template prompt for a plan at a level, or None if the plan cannot make one."""
+    """One template prompt for a plan at a level, or None if the plan cannot make one.
+
+    `forbidden` holds normalized train prompt texts; a text equal to one is drawn again, so
+    short generic prompts ("Draw a two-bedroom flat.") never repeat a train prompt.
+    """
     graph = candidate.canon.record.graph
     for _ in range(DERIVE_TRIES):
         reqs = derive_requirements(graph, level, rng, candidate.source)
@@ -59,6 +69,8 @@ def make_prompt(
     for _ in range(TEXT_TRIES):
         kind = choose_kind(level, reqs, rng)
         text = render_text(graph, reqs, kind, candidate.source, rng)
+        if normalize_text(text) in forbidden:
+            continue
         if kind in _FULL_KINDS or not slot_check(text, reqs):
             return PromptRow(
                 id=f"{'T' if set_name.endswith('test') else 'V'}{number:04d}",
@@ -93,6 +105,7 @@ def build_template_set(
     pools: dict[str, list[Candidate]],
     rng: random.Random,
     quotas: dict[str, int] | None = None,
+    forbidden: Collection[str] = (),
 ) -> list[PromptRow]:
     """The template prompts of one split. A source short of plans simply gives fewer prompts."""
     quotas = quotas or TEMPLATE_QUOTAS
@@ -100,21 +113,26 @@ def build_template_set(
     for source, quota in quotas.items():
         pool = pools.get(source, [])
         if source == "cubicasa5k":
-            rows += _multi_level(set_name, pool, quota, len(rows), rng)
+            rows += _multi_level(set_name, pool, quota, len(rows), rng, forbidden)
             continue
         cap = 1
         while len(_take(pool, quota, cap)) < min(quota, len(pool)):
             cap += 1
         plans = _take(pool, quota, cap)
         for plan, level in zip(plans, level_sequence(len(plans), rng), strict=True):
-            row = make_prompt(plan, level, set_name, len(rows), rng)
+            row = make_prompt(plan, level, set_name, len(rows), rng, forbidden)
             if row:
                 rows.append(row)
     return rows
 
 
 def _multi_level(
-    set_name: str, pool: Sequence[Candidate], quota: int, offset: int, rng: random.Random
+    set_name: str,
+    pool: Sequence[Candidate],
+    quota: int,
+    offset: int,
+    rng: random.Random,
+    forbidden: Collection[str] = (),
 ) -> list[PromptRow]:
     """Few plans, several prompts each at different levels, until the quota is met."""
     if not pool:
@@ -124,7 +142,7 @@ def _multi_level(
     for index, plan in enumerate(pool):
         wanted = min(4, base + (1 if index < extra else 0))
         for level in rng.sample([1, 2, 3, 4], wanted):
-            row = make_prompt(plan, level, set_name, offset + len(rows), rng)
+            row = make_prompt(plan, level, set_name, offset + len(rows), rng, forbidden)
             if row:
                 rows.append(row)
     return rows

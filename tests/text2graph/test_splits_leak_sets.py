@@ -147,3 +147,15 @@ def test_the_same_seed_builds_the_same_sets(tmp_path):
         build_sets(config)
         texts.append((tmp_path / name / "template_test.jsonl").read_text())
     assert texts[0] == texts[1]
+
+
+def test_a_prompt_text_equal_to_a_train_prompt_is_drawn_again():
+    canon = canonicalize(make_record(9)).record
+    candidate = type(
+        "C",
+        (),
+        {"canon": type("K", (), {"record": canon})(), "source": "resplan", "record_id": canon.id},
+    )()
+    first = make_prompt(candidate, 0, "template_test", 0, random.Random(3))
+    again = make_prompt(candidate, 0, "template_test", 0, random.Random(3), {first.text.lower()})
+    assert again is None or again.text != first.text

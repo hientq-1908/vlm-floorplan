@@ -130,7 +130,7 @@ def build_sets(config: BuildConfig) -> dict[str, Any]:
     for split, name in (("test", "template_test"), ("val", "template_val")):
         pools = held_out_candidates(read_records(paths), split, index, rng)
         log(f"{split}: candidates " + ", ".join(f"{s} {len(p)}" for s, p in pools.items()))
-        rows[name] = build_template_set(name, pools, rng, config.quotas)
+        rows[name] = build_template_set(name, pools, rng, config.quotas, index.texts)
         for pool in pools.values():
             for candidate in pool:
                 references[candidate.record_id] = candidate.canon.record
@@ -143,7 +143,9 @@ def build_sets(config: BuildConfig) -> dict[str, Any]:
                 if c.record_id not in used
             ] or [(c.record_id, c.source, c.canon.record.graph) for p in pools.values() for c in p]
         log(f"{name}: {len(rows[name])} prompts")
-    rows["behavior_test"] = build_behavior_rows(behavior_plans, rng, config.behavior_quotas)
+    rows["behavior_test"] = build_behavior_rows(
+        behavior_plans, rng, config.behavior_quotas, index.texts
+    )
     rows["paraphrase_test"], teacher_stats = [], {"skipped": "no teacher given"}
     if config.teacher is not None:
         rows["paraphrase_test"], teacher_stats = build_paraphrase_set(

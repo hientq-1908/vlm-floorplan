@@ -17,9 +17,11 @@ from __future__ import annotations
 
 import random
 from collections import Counter
+from collections.abc import Callable, Collection
 
 from vlm_floorplan.requirements import derive_requirements, requirements_to_json
 from vlm_floorplan.schema import FloorplanGraph, LinkKind, Room, RoomType
+from vlm_floorplan.text2graph.leak import normalize_text
 from vlm_floorplan.text2graph.rows import PromptRow, empty_start
 from vlm_floorplan.text2graph.templates import choose_kind, render_text
 from vlm_floorplan.text2graph.words import NOUNS, NUMBER_WORDS
@@ -191,11 +193,13 @@ def build_behavior_rows(
     plans: list[tuple[str, str, FloorplanGraph]],
     rng: random.Random,
     quotas: dict[str, int] | None = None,
+    forbidden: Collection[str] = (),
 ) -> list[PromptRow]:
     """The behavior test set from a pool of (record id, source, canonical graph) plans.
 
     Plans are used round-robin; an edit is retried on later plans when a plan has no place for
-    it. Raises `ValueError` when the pool cannot fill a quota.
+    it. A prompt whose text equals one in `forbidden` (train prompts) is drawn again.
+    Raises `ValueError` when the pool cannot fill a quota.
     """
     quotas = quotas or BEHAVIOR_QUOTAS
     plans = list(plans)
@@ -215,21 +219,28 @@ def build_behavior_rows(
             index = (cursor + attempt) % len(plans)
             record_id, source, graph = plans[index]
             row = edit_row(len(rows), record_id, source, graph, kind, rng)
-            if row:
+            if row and normalize_text(row.text) not in forbidden:
                 rows.append(row)
                 cursor = index + 1
                 break
         else:
             raise ValueError(f"no plan in the pool can take an edit of kind {kind}")
+
+    def fresh(make: Callable[[str, str, FloorplanGraph], PromptRow]) -> PromptRow:
+        for _attempt in range(50):
+            row = make(*next_plan())
+            if normalize_text(row.text) not in forbidden:
+                return row
+        raise ValueError("every drawn behavior prompt equals a train prompt")
+
     for _ in range(quotas["restart"]):
-        record_id, source, graph = next_plan()
-        rows.append(restart_row(len(rows), record_id, source, graph, rng.choice(plans)[2], rng))
+        rows.append(
+            fresh(lambda i, s, g: restart_row(len(rows), i, s, g, rng.choice(plans)[2], rng))
+        )
     for _ in range(quotas["contradiction"]):
-        record_id, source, graph = next_plan()
-        rows.append(contradiction_row(len(rows), record_id, source, graph, rng))
+        rows.append(fresh(lambda i, s, g: contradiction_row(len(rows), i, s, g, rng)))
     for _ in range(quotas["unsupported"]):
-        record_id, source, graph = next_plan()
-        rows.append(unsupported_row(len(rows), record_id, source, graph, rng))
+        rows.append(fresh(lambda i, s, g: unsupported_row(len(rows), i, s, g, rng)))
     return rows
 
 
