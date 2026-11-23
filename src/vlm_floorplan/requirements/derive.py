@@ -245,8 +245,9 @@ def derive_requirements(
     picker = _Picker(pool, rng)
     bedrooms = pool["main_bedroom"][0]
     if level == 0:
-        if rng.random() < 0.6 and isinstance(bedrooms, RoomCount) and bedrooms.n >= 1:
-            picker.add(bedrooms)
+        count = sum(room.type == RoomType.BEDROOM for room in graph.rooms())
+        if rng.random() < 0.6 and isinstance(bedrooms, RoomCount) and count >= 1:
+            picker.add(RoomCount(type=RoomType.BEDROOM, op="eq", n=count))
         return picker.chosen
     picker.add(bedrooms)
     extras = ("adjacent", "entrances", "negative", "ensuites", "count")

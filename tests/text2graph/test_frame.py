@@ -65,7 +65,9 @@ def test_every_point_stays_inside_its_room_polygon():
 def test_a_rotated_plan_is_straightened_and_keeps_its_graph():
     original = canonicalize(make_record(5)).record.graph
     turned = canonicalize(rotated(make_record(5), 27))
-    assert turned.rotation_deg == pytest.approx(-27, abs=1) or abs(turned.rotation_deg) < 45
+    assert abs(turned.rotation_deg) == pytest.approx(27, abs=1)
+    rings = [Polygon(source.polygon[0]) for source in turned.record.rooms.values()]
+    assert dominant_angle(rings) == pytest.approx(0, abs=1)
     again = turned.record.graph
     assert sorted(r.type.value for r in again.rooms()) == sorted(
         r.type.value for r in original.rooms()

@@ -6,7 +6,7 @@ from t2g_fixtures import make_record
 from vlm_floorplan.requirements import Adjacent, Ensuites, HasLabel, RoomCount, derive_requirements
 from vlm_floorplan.text2graph.frame import canonicalize
 from vlm_floorplan.text2graph.templates import choose_kind, render_text
-from vlm_floorplan.text2graph.words import slot_check
+from vlm_floorplan.text2graph.words import NUMBER_WORDS, slot_check
 
 REQS = [
     RoomCount(type="bedroom", op="eq", n=3),
@@ -80,3 +80,17 @@ def test_the_same_seed_gives_the_same_text():
         reqs = derive_requirements(graph, 3, rng, "resplan")
         texts.append(render_text(graph, reqs, choose_kind(3, reqs, rng), "resplan", rng))
     assert texts[0] == texts[1]
+
+
+def test_a_minimal_prompt_asks_for_exactly_the_bedrooms_the_plan_has():
+    # "Draw a three-bedroom flat." means three bedrooms, so the requirement must be exact too.
+    for record_seed in range(4):
+        graph = canonicalize(make_record(record_seed)).record.graph
+        bedrooms = sum(room.type.value == "bedroom" for room in graph.rooms())
+        for seed in range(60):
+            rng = random.Random(seed)
+            reqs = derive_requirements(graph, 0, rng, "resplan")
+            assert all((r.op, r.n) == ("eq", bedrooms) for r in reqs if isinstance(r, RoomCount))
+            text = render_text(graph, reqs, choose_kind(0, reqs, rng), "resplan", rng).lower()
+            if reqs:
+                assert NUMBER_WORDS[bedrooms] in text or f"{bedrooms}-bedroom" in text, text
