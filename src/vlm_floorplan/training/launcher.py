@@ -1,9 +1,6 @@
 """Launch SFT on ClearML, then download, verify, and delete the task.
 
-    uv run --group ml python scripts/clearml_sft.py launch --train-file TRAIN.jsonl --dry-run
-    uv run --group ml python scripts/clearml_sft.py launch --train-file TRAIN.jsonl --smoke --wait
-    uv run --group ml python scripts/clearml_sft.py launch --train-file TRAIN.jsonl --wait
-    uv run --group ml python scripts/clearml_sft.py collect --task-id TASK_ID --run-name NAME
+Usage (`scripts/clearml_sft.py launch|collect`) is in docs/sft-training.md, "Run it on ClearML".
 
 This follows the zero-shot baseline launcher (`evaluation/launcher.py`) step for step: the
 training file travels as a task artifact, and so does the repository source (`git archive` of
