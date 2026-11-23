@@ -24,6 +24,7 @@ from pathlib import Path
 
 SOURCE_ARTIFACT = "repo_source"
 PYTHON_VERSION = "3.12"
+AGENT_PYTHON_VARS = ("PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV")
 
 
 def unpack_source(archive: Path, dest: Path) -> Path:
@@ -47,7 +48,10 @@ def unpack_source(archive: Path, dest: Path) -> Path:
 
 def uv_commands(source: Path, env_dir: Path) -> tuple[list[str], list[str], dict[str, str]]:
     """The environment build command, the job command, and the environment variables for both."""
-    env = {**os.environ, "UV_PROJECT_ENVIRONMENT": str(env_dir)}
+    # The agent's own interpreter settings must not leak into the Python 3.12 builds: its
+    # PYTHONPATH made a 3.12 build load the agent venv's 3.10 setuptools and crash.
+    env = {k: v for k, v in os.environ.items() if k not in AGENT_PYTHON_VARS}
+    env["UV_PROJECT_ENVIRONMENT"] = str(env_dir)
     flags = ["--frozen", "--no-dev", "--group", "ml", "--python", PYTHON_VERSION]
     uv = [sys.executable, "-m", "uv"]
     build = [*uv, "sync", *flags]

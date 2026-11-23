@@ -199,3 +199,15 @@ def test_bootstrap_builds_the_env_from_the_lockfile_with_python_3_12(
 
 def test_bootstrap_and_job_agree_on_the_source_artifact_name(bootstrap: ModuleType) -> None:
     assert bootstrap.SOURCE_ARTIFACT == SOURCE_ARTIFACT
+
+
+def test_bootstrap_keeps_the_agents_python_settings_out_of_the_uv_env(
+    bootstrap: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Live failure: PYTHONPATH of the agent's 3.10 venv made a 3.12 build import 3.10 setuptools."""
+    monkeypatch.setenv("PYTHONPATH", "/root/.clearml/venvs-builds/3.10/lib/python3.10")
+    monkeypatch.setenv("VIRTUAL_ENV", "/root/.clearml/venvs-builds/3.10")
+    monkeypatch.setenv("CLEARML_TASK_ID", "abc")
+    _, _, env = bootstrap.uv_commands(tmp_path / "src", tmp_path / "venv")
+    assert "PYTHONPATH" not in env and "VIRTUAL_ENV" not in env
+    assert env["CLEARML_TASK_ID"] == "abc"  # the job still needs to find its task
