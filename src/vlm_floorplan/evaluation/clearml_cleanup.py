@@ -12,6 +12,7 @@ The client is the ClearML `APIClient`, passed in so the logic is tested with a f
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -58,3 +59,22 @@ def remove_empty_projects(client: Any, project_id: str) -> CleanupReport:
         client.projects.delete(project=candidate.id, force=False)
         report.deleted.append(candidate.name)
     return report
+
+
+def delete_tolerating_missing_files(
+    delete: Callable[[], Any], error_type: type[Exception], still_exists: Callable[[], bool]
+) -> None:
+    """Run a task delete that may raise because artifact files were already gone (HTTP 404).
+
+    ClearML deletes the task first and then its files; a file that is not on the server makes it
+    raise although the task is gone. What counts is the result: if the task no longer exists the
+    delete worked, and any other failure is raised as before.
+    """
+    try:
+        deleted = delete()
+    except error_type:
+        if still_exists():
+            raise
+        return
+    if not deleted:
+        raise RuntimeError("ClearML did not delete the task")

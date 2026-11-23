@@ -148,12 +148,26 @@ class ClearMlTask:
         return downloaded
 
     def delete(self) -> None:
-        if not self.task.delete(
-            delete_artifacts_and_models=True,
-            skip_models_used_by_other_tasks=True,
-            raise_on_error=True,
-        ):
-            raise RuntimeError(f"ClearML did not delete task {self.task_id}")
+        from clearml import Task
+
+        from vlm_floorplan.evaluation.clearml_cleanup import delete_tolerating_missing_files
+
+        def still_exists() -> bool:
+            try:
+                Task.get_task(task_id=self.task_id)
+            except ValueError:  # "could not be found"
+                return False
+            return True
+
+        delete_tolerating_missing_files(
+            lambda: self.task.delete(
+                delete_artifacts_and_models=True,
+                skip_models_used_by_other_tasks=True,
+                raise_on_error=True,
+            ),
+            self.task.DeleteError,
+            still_exists,
+        )
 
     def remove_empty_project(self) -> list[str]:
         from clearml.backend_api.session.client import APIClient

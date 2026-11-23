@@ -11,7 +11,10 @@ from typing import Any
 import pytest
 from test_eval_collect import FakeTask, good_task
 
-from vlm_floorplan.evaluation.clearml_cleanup import remove_empty_projects
+from vlm_floorplan.evaluation.clearml_cleanup import (
+    delete_tolerating_missing_files,
+    remove_empty_projects,
+)
 from vlm_floorplan.evaluation.collect import collect_and_delete
 
 
@@ -138,3 +141,37 @@ def test_a_failing_project_cleanup_is_reported_not_raised(tmp_path: Path) -> Non
     report = collect_and_delete(task, tmp_path / "out")
     assert task.deleted
     assert any("project cleanup failed" in c for c in report.checks)
+
+
+class FilesMissingError(Exception):
+    """Stands in for ClearML's DeleteError (artifact URIs that answered 404)."""
+
+
+def raising(error: Exception):  # noqa: ANN201
+    def delete() -> bool:
+        raise error
+
+    return delete
+
+
+def test_delete_that_fails_only_on_missing_files_counts_when_the_task_is_gone() -> None:
+    delete_tolerating_missing_files(raising(FilesMissingError()), FilesMissingError, lambda: False)
+
+
+def test_delete_error_is_raised_when_the_task_still_exists() -> None:
+    with pytest.raises(FilesMissingError):
+        delete_tolerating_missing_files(
+            raising(FilesMissingError()), FilesMissingError, lambda: True
+        )
+
+
+def test_other_errors_are_never_swallowed() -> None:
+    with pytest.raises(PermissionError):
+        delete_tolerating_missing_files(
+            raising(PermissionError()), FilesMissingError, lambda: False
+        )
+
+
+def test_a_false_result_from_the_server_is_an_error() -> None:
+    with pytest.raises(RuntimeError, match="did not delete"):
+        delete_tolerating_missing_files(lambda: False, FilesMissingError, lambda: False)

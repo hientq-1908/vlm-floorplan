@@ -99,7 +99,8 @@ def create_and_enqueue(spec: SftSpec, train_file: Path, state: dict[str, Any]) -
         source = Path(tmp) / "repo_source.tar.gz"
         pack_train_file(train_file, data)
         pack_repo_source(REPO_ROOT, source)
-        # No `repo`: the task is the single bootstrap script, which unpacks the source artifact.
+        # No `repo`: the task is the single bootstrap script, stored whole in the task, which
+        # unpacks the source artifact. (`detect_repository=False` would store only a local path.)
         task = Task.create(
             project_name=spec.project,
             task_name=spec.run_name,
@@ -108,7 +109,6 @@ def create_and_enqueue(spec: SftSpec, train_file: Path, state: dict[str, Any]) -
             packages=[f"clearml=={clearml_version()}"],
             docker=spec.docker_image,
             force_single_script_file=True,
-            detect_repository=False,
             add_task_init_call=False,
         )
         task.set_parameters({f"General/{k}": v for k, v in spec.job_parameters().items()})
