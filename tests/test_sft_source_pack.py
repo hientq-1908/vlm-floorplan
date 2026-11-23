@@ -7,6 +7,7 @@ must hold: the package and the lockfile are in it, and data, secrets and uncommi
 from __future__ import annotations
 
 import importlib.util
+import os
 import subprocess
 import sys
 import tarfile
@@ -211,3 +212,34 @@ def test_bootstrap_keeps_the_agents_python_settings_out_of_the_uv_env(
     _, _, env = bootstrap.uv_commands(tmp_path / "src", tmp_path / "venv")
     assert "PYTHONPATH" not in env and "VIRTUAL_ENV" not in env
     assert env["CLEARML_TASK_ID"] == "abc"  # the job still needs to find its task
+
+
+def test_compat_libraries_go_first_on_the_library_path(bootstrap: ModuleType) -> None:
+    env = {"LD_LIBRARY_PATH": "/usr/lib/host", "OTHER": "1"}
+    result = bootstrap.with_compat_libraries(env, ["/usr/local/cuda-13.0/compat"])
+    assert result["LD_LIBRARY_PATH"] == "/usr/local/cuda-13.0/compat:/usr/lib/host"
+    assert result["OTHER"] == "1" and env["LD_LIBRARY_PATH"] == "/usr/lib/host"
+
+
+def test_compat_libraries_work_without_an_existing_library_path(bootstrap: ModuleType) -> None:
+    result = bootstrap.with_compat_libraries({}, ["/a/compat", "/b/compat"])
+    assert result["LD_LIBRARY_PATH"] == "/a/compat:/b/compat"
+
+
+def test_no_compat_directory_leaves_the_environment_alone(bootstrap: ModuleType) -> None:
+    env = {"LD_LIBRARY_PATH": "/usr/lib/host"}
+    assert bootstrap.with_compat_libraries(env, []) == env
+
+
+def test_gpu_check_fails_fast_with_a_clear_message_when_torch_sees_no_gpu(
+    bootstrap: ModuleType,
+) -> None:
+    pytest.importorskip("torch")
+    result = subprocess.run(
+        [sys.executable, "-c", bootstrap.GPU_CHECK],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "CUDA_VISIBLE_DEVICES": ""},
+    )
+    assert result.returncode != 0
+    assert "GPU CHECK FAILED" in result.stderr

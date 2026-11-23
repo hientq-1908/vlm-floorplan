@@ -189,6 +189,7 @@ A failed task is downloaded the same way, since its logs are the point, and then
 The job writes `job.log` into the result, which is the complete log.
 The agent cannot clone the private repository, so the launcher uploads the source with the task: `git archive HEAD` filtered again so that data, outputs and secret-looking files never leave the machine (`source_pack.py`).
 The task itself is the single script `scripts/sft_bootstrap.py`, which unpacks that archive, builds the environment from `uv.lock` with Python 3.12 (the agent image only has an older Python), and runs `scripts/sft_job.py` in it.
+Before training, the bootstrap puts the docker image's CUDA compat libraries (`/usr/local/cuda*/compat`) first on `LD_LIBRARY_PATH` so the CUDA 13 torch wheel in `uv.lock` can run on an agent with an older driver (data-center GPUs only), then prints `nvidia-smi` and runs a tiny bf16 matmul, and stops with a clear message if torch cannot use the GPU.
 `--queue` is required; list the workspace queues and their live workers first (for example with ClearML's `APIClient().workers.get_all()`).
 On the agent, a full run reports its loss curve to ClearML (`train.report_to = "clearml"`); a smoke run and a local run do not.
 Only metrics go there: the job sets `CLEARML_LOG_MODEL=false`, so checkpoints are not uploaded, since the result archive already carries the adapter.

@@ -15,6 +15,7 @@ It must stay standalone and run on the agent's old Python: standard library only
 
 from __future__ import annotations
 
+import glob
 import os
 import subprocess
 import sys
@@ -25,6 +26,18 @@ from pathlib import Path
 SOURCE_ARTIFACT = "repo_source"
 PYTHON_VERSION = "3.12"
 AGENT_PYTHON_VARS = ("PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV")
+CUDA_COMPAT_PATTERN = "/usr/local/cuda*/compat"
+"""CUDA forward-compatibility libraries shipped in the agent's docker image."""
+GPU_CHECK = """
+import sys
+import torch
+print("torch", torch.__version__, "built for CUDA", torch.version.cuda)
+if not torch.cuda.is_available():
+    sys.exit("GPU CHECK FAILED: torch cannot use the GPU (driver too old for this torch build?)")
+print("gpu:", torch.cuda.get_device_name(0))
+x = torch.ones(64, 64, device="cuda", dtype=torch.bfloat16)
+print("bf16 matmul on the GPU ok:", float((x @ x)[0, 0]) == 64.0)
+"""
 
 
 def unpack_source(archive: Path, dest: Path) -> Path:
@@ -44,6 +57,19 @@ def unpack_source(archive: Path, dest: Path) -> Path:
         extra = {"filter": "data"} if hasattr(tarfile, "data_filter") else {}
         tar.extractall(dest, members=members, **extra)
     return dest
+
+
+def with_compat_libraries(env: dict[str, str], compat_dirs: list[str]) -> dict[str, str]:
+    """`env` with the CUDA compat directories first on LD_LIBRARY_PATH.
+
+    The agent's driver (CUDA 12.8) is older than the CUDA 13 wheel of torch in `uv.lock`. On a
+    data-center GPU such as the A10G, the newer user-space driver libraries in the image's compat
+    directory let it run anyway, but only if they are found before the host driver's.
+    """
+    if not compat_dirs:
+        return env
+    existing = [env["LD_LIBRARY_PATH"]] if env.get("LD_LIBRARY_PATH") else []
+    return {**env, "LD_LIBRARY_PATH": ":".join([*compat_dirs, *existing])}
 
 
 def uv_commands(source: Path, env_dir: Path) -> tuple[list[str], list[str], dict[str, str]]:
@@ -70,6 +96,15 @@ def main() -> int:
     subprocess.run([sys.executable, "-m", "pip", "install", "--quiet", "uv"], check=True)
     build, run, env = uv_commands(source, work / "venv")
     subprocess.run(build, cwd=source, env=env, check=True)
+
+    # Fail in seconds with a clear message instead of after the model download.
+    compat_dirs = sorted(glob.glob(CUDA_COMPAT_PATTERN))
+    print("CUDA compat directories:", compat_dirs or "none found", flush=True)
+    env = with_compat_libraries(env, compat_dirs)
+    subprocess.run(["nvidia-smi"], check=False)
+    check = [*run[: run.index("python")], "python", "-c", GPU_CHECK]
+    if subprocess.run(check, cwd=source, env=env).returncode != 0:
+        return 3
     return subprocess.run(run, cwd=source, env=env).returncode
 
 
