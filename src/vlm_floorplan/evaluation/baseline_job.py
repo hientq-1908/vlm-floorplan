@@ -35,7 +35,7 @@ from vlm_floorplan.evaluation.config import EvalConfig
 from vlm_floorplan.evaluation.harness import collect_outputs
 from vlm_floorplan.evaluation.run_dir import write_manifest
 from vlm_floorplan.evaluation.scoring import score_run
-from vlm_floorplan.evaluation.t2g_harness import T2gConfig
+from vlm_floorplan.evaluation.t2g_harness import T2gConfig, context_tokens
 from vlm_floorplan.evaluation.t2g_harness import collect_outputs as collect_t2g
 from vlm_floorplan.evaluation.t2g_scoring import score_run as score_t2g
 
@@ -176,13 +176,19 @@ def serve_env(spec: BaselineSpec, port: int) -> dict[str, str]:
 
     The served context is sized from the request budget: vLLM rejects (HTTP 400) any
     request whose prompt plus `max_tokens` exceeds `MAX_MODEL_LEN`, so raising
-    `--max-tokens` without it would turn every plan into an API error.
+    `--max-tokens` without it would turn every plan into an API error. An image run sends one
+    request per plan; a text-to-graph run is an agent loop whose later requests resend the
+    earlier turns (`t2g_harness.context_tokens`).
     """
+    if spec.task == "text2graph":
+        context = context_tokens(spec.max_tokens)
+    else:
+        context = spec.max_tokens + PROMPT_CONTEXT_TOKENS
     return {
         "MODEL": spec.model,
         "SERVED_NAME": spec.served_name,
         "SERVE_PORT": str(port),
-        "MAX_MODEL_LEN": str(spec.max_tokens + PROMPT_CONTEXT_TOKENS),
+        "MAX_MODEL_LEN": str(context),
     }
 
 

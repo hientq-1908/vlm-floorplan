@@ -36,6 +36,23 @@ from vlm_floorplan.evaluation.t2g_prompt import (
 )
 from vlm_floorplan.text2graph.rows import PromptRow, read_rows
 
+MAX_TOOL_CALLS = 8
+PROMPT_TOKENS = 8192
+"""The first request without completion: system prompt, twelve tool schemas, user turn, template."""
+TOOL_RESPONSE_TOKENS = 2048
+"""One tool response: the status line and the whole plan."""
+
+
+def context_tokens(max_tokens: int, max_tool_calls: int = MAX_TOOL_CALLS) -> int:
+    """The served context (vLLM `--max-model-len`) the longest transcript needs.
+
+    The loop sends at most `max_tool_calls` requests. The last one resends the first prompt,
+    every earlier turn (each up to `max_tokens`) and every earlier tool response, and asks for
+    `max_tokens` more. vLLM refuses a request over the context with HTTP 400, which fails the
+    whole prompt, so a server sized for one request would fail exactly the longer transcripts.
+    """
+    return PROMPT_TOKENS + max_tool_calls * max_tokens + (max_tool_calls - 1) * TOOL_RESPONSE_TOKENS
+
 
 class T2gConfig(BaseModel):
     """Settings of one run. Saved as `config.json`; the API key itself is never stored."""
@@ -59,7 +76,7 @@ class T2gConfig(BaseModel):
     concurrency: int = Field(default=8, gt=0)
     limit: int | None = None
     timeout_s: float = 1800.0
-    max_tool_calls: int = Field(default=8, gt=0)
+    max_tool_calls: int = Field(default=MAX_TOOL_CALLS, gt=0)
     """Tool calls allowed per prompt; a transcript that reaches it is flagged `hit_call_cap`."""
     prompt_version: str = PROMPT_VERSION
 
@@ -220,5 +237,6 @@ __all__ = [
     "build_request",
     "call_arguments",
     "collect_outputs",
+    "context_tokens",
     "run_prompt",
 ]

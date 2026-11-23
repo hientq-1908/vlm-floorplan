@@ -2,7 +2,11 @@ import json
 
 from test_t2g_harness import GoldClient, sets  # noqa: F401  (the module-scoped set fixture)
 
-from vlm_floorplan.evaluation.baseline_job import run_text_baseline, spec_from_parameters
+from vlm_floorplan.evaluation.baseline_job import (
+    run_text_baseline,
+    serve_env,
+    spec_from_parameters,
+)
 from vlm_floorplan.evaluation.baseline_spec import BaselineSpec, pack_sets, unpack_sets
 from vlm_floorplan.evaluation.collect import _check_result
 from vlm_floorplan.evaluation.run_dir import write_manifest
@@ -67,3 +71,13 @@ def test_the_headline_shows_the_numbers_to_read_first(sets, tmp_path):  # noqa: 
     assert "tool-call rate (new_plan): 1.000" in text and "all-met (strict): 1.000" in text
     assert "L4: 1.000" in text and "circulation_rate" in text
     json.dumps(summary, default=str)
+
+
+def test_the_text_job_serves_a_context_that_holds_the_whole_agent_loop():
+    # The loop's last request resends the first prompt (about 4K tokens) and seven earlier turns
+    # of up to max_tokens each, then asks for max_tokens more: over 8 * 8192 tokens in all.
+    text = BaselineSpec(run_name="r", task="text2graph", max_tokens=8192)
+    context = int(serve_env(text, 8000)["MAX_MODEL_LEN"])
+    assert 8 * 8192 + 4096 < context <= 262144  # Qwen3.5-4B's native context
+    image = BaselineSpec(run_name="r", task="image", max_tokens=12288)
+    assert serve_env(image, 8000)["MAX_MODEL_LEN"] == "20480"  # one request per plan

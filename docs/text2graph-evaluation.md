@@ -152,8 +152,8 @@ A model that returns the source plan scores 1.0 everywhere, which a test checks.
 Serve the base model, or the base model with a LoRA adapter, then run the same command with the served name.
 
 ```bash
-deploy/vllm/serve.sh                                           # base, served as qwen3.5-4b
-LORA_MODULES="floorplan=/path/to/adapter" deploy/vllm/serve.sh # adds --enable-lora, rank up to 32
+MAX_MODEL_LEN=88064 deploy/vllm/serve.sh                       # base, served as qwen3.5-4b
+MAX_MODEL_LEN=88064 LORA_MODULES="floorplan=/path/to/adapter" deploy/vllm/serve.sh  # adds --enable-lora
 
 uv run python -m vlm_floorplan.evaluation t2g-run --prompts DIR/template_test.jsonl \
   --run-name base-template --model qwen3.5-4b
@@ -161,6 +161,10 @@ uv run python -m vlm_floorplan.evaluation t2g-run --prompts DIR/template_test.js
   --run-name sft1-template --model floorplan
 uv run python -m vlm_floorplan.evaluation t2g-rescore runs/base-template
 ```
+
+The served context must hold the longest transcript, not one request: the last of up to 8 requests resends the first prompt, every earlier turn and every tool response, and asks for `max_tokens` more.
+`t2g_harness.context_tokens(max_tokens)` gives the size, 88064 for the default `max_tokens` of 8192; vLLM refuses a longer request with HTTP 400 and the prompt is recorded as a failed call.
+The ClearML job sets it this way by itself.
 
 `--variant one-example` appends one worked example to the system prompt.
 The run directory is as for the perception harness (`config.json`, `outputs.jsonl`, `per_prompt.jsonl`, `metrics.json`, `MANIFEST.json`), plus `system_prompt.txt`; it resumes and can be rescored without calling the model.

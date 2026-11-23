@@ -28,7 +28,9 @@ SERVE_HOST="${SERVE_HOST:-127.0.0.1}"
 SERVE_PORT="${SERVE_PORT:-8000}"
 # 20480 = a 1280 px plan image (about 1.2K tokens) + prompt + the 12K completion budget
 # that thinking mode needs. Raise it if the harness's --max-tokens goes up; the ClearML
-# baseline job sets it from its --max-tokens.
+# baseline job sets it from its --max-tokens. The text-to-graph agent loop resends earlier
+# turns, so t2g-run needs MAX_MODEL_LEN=88064 at its default --max-tokens 8192
+# (vlm_floorplan.evaluation.t2g_harness.context_tokens).
 MAX_MODEL_LEN="${MAX_MODEL_LEN:-20480}"
 GPU_MEMORY_UTILIZATION="${GPU_MEMORY_UTILIZATION:-0.90}"
 
