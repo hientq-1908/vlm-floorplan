@@ -15,6 +15,7 @@ from typing import Any
 import pytest
 from sft_fixture import make_sample, write_samples
 
+from vlm_floorplan.evaluation.clearml_cleanup import CleanupReport
 from vlm_floorplan.evaluation.collect import (
     ConsoleLog,
     DownloadVerificationError,
@@ -276,8 +277,8 @@ class FakeTask:
         self.deleted = True
         return []
 
-    def remove_empty_project(self) -> list[str]:
-        return []
+    def remove_empty_project(self) -> CleanupReport:
+        return CleanupReport()
 
 
 def collect(task: FakeTask, dest: Path) -> None:

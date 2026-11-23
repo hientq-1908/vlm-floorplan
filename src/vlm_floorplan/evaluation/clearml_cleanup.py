@@ -24,10 +24,11 @@ class CleanupReport:
     kept: dict[str, str] = field(default_factory=dict)
     """Project name to what it still holds, for projects left alone."""
 
-    def lines(self) -> list[str]:
-        lines = [f"deleted empty ClearML project {name!r}" for name in self.deleted]
-        lines += [f"kept ClearML project {name!r}: {why}" for name, why in self.kept.items()]
-        return lines
+    def checks(self) -> list[str]:
+        return [f"deleted empty ClearML project {name!r}" for name in self.deleted]
+
+    def warnings(self) -> list[str]:
+        return [f"kept ClearML project {name!r}: {why}" for name, why in self.kept.items()]
 
 
 def _contents(client: Any, project_id: str) -> str:

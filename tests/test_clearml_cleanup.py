@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -12,10 +13,11 @@ import pytest
 from test_eval_collect import FakeTask, good_task
 
 from vlm_floorplan.evaluation.clearml_cleanup import (
+    CleanupReport,
     delete_tolerating_missing_files,
     remove_empty_projects,
 )
-from vlm_floorplan.evaluation.collect import collect_and_delete
+from vlm_floorplan.evaluation.collect import VERIFIED_MARKER, collect_and_delete
 
 
 @dataclass
@@ -136,11 +138,13 @@ class ProjectTask(FakeTask):
         self.events.append("delete task")
         return super().delete()
 
-    def remove_empty_project(self) -> list[str]:
+    def remove_empty_project(self) -> CleanupReport:
         self.events.append("remove project")
         if self.fail:
             raise RuntimeError("server unreachable")
-        return ["deleted empty ClearML project 'vlm-floorplan'"]
+        return CleanupReport(
+            deleted=["vlm-floorplan"], kept={"vlm-floorplan/.datasets": "1 task(s)"}
+        )
 
 
 def test_collector_removes_the_project_after_deleting_the_task(tmp_path: Path) -> None:
@@ -149,6 +153,12 @@ def test_collector_removes_the_project_after_deleting_the_task(tmp_path: Path) -
     report = collect_and_delete(task, tmp_path / "out")
     assert task.events == ["delete task", "remove project"]
     assert "deleted empty ClearML project 'vlm-floorplan'" in report.checks
+
+
+def test_a_project_left_on_clearml_is_a_warning_not_a_check(tmp_path: Path) -> None:
+    report = collect_and_delete(ProjectTask(good_task(tmp_path)._artifacts), tmp_path / "out")
+    assert any(".datasets" in w for w in report.warnings)
+    assert not any(".datasets" in c for c in report.checks)
 
 
 def test_project_is_never_touched_when_verification_fails(tmp_path: Path) -> None:
@@ -162,7 +172,7 @@ def test_a_failing_project_cleanup_is_reported_not_raised(tmp_path: Path) -> Non
     task = ProjectTask(good_task(tmp_path)._artifacts, fail=True)
     report = collect_and_delete(task, tmp_path / "out")
     assert task.deleted
-    assert any("project cleanup failed" in c for c in report.checks)
+    assert any("project cleanup failed" in w for w in report.warnings)
 
 
 class FilesMissingError(Exception):
@@ -214,8 +224,12 @@ def test_collector_reports_leftover_files_from_the_delete(tmp_path: Path) -> Non
             super().delete()
             return [f"could not be removed: {FILE_B}"]
 
-    report = collect_and_delete(LeftoverTask(good_task(tmp_path)._artifacts), tmp_path / "out")
-    assert f"could not be removed: {FILE_B}" in report.checks
+    dest = tmp_path / "out"
+    report = collect_and_delete(LeftoverTask(good_task(tmp_path)._artifacts), dest)
+    assert report.warnings == [f"could not be removed: {FILE_B}"]
+    assert f"could not be removed: {FILE_B}" not in report.checks
+    marker = json.loads((dest / VERIFIED_MARKER).read_text())
+    assert marker["clearml_leftovers"] == [f"could not be removed: {FILE_B}"]
 
 
 def test_delete_error_is_raised_when_the_task_still_exists() -> None:

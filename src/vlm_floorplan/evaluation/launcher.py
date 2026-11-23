@@ -31,6 +31,11 @@ from vlm_floorplan.evaluation.baseline_spec import (
     default_runs_dir,
     pack_split,
 )
+from vlm_floorplan.evaluation.clearml_cleanup import (
+    CleanupReport,
+    delete_tolerating_missing_files,
+    remove_empty_projects,
+)
 from vlm_floorplan.evaluation.collect import (
     FINISHED_STATUSES,
     CollectReport,
@@ -152,8 +157,6 @@ class ClearMlTask:
     def delete(self) -> list[str]:
         from clearml import Task
 
-        from vlm_floorplan.evaluation.clearml_cleanup import delete_tolerating_missing_files
-
         def still_exists() -> bool:
             try:
                 Task.get_task(task_id=self.task_id)
@@ -187,12 +190,10 @@ class ClearMlTask:
             is_gone,
         )
 
-    def remove_empty_project(self) -> list[str]:
+    def remove_empty_project(self) -> CleanupReport:
         from clearml.backend_api.session.client import APIClient
 
-        from vlm_floorplan.evaluation.clearml_cleanup import remove_empty_projects
-
-        return remove_empty_projects(APIClient(), self.project_id).lines()
+        return remove_empty_projects(APIClient(), self.project_id)
 
 
 def create_and_enqueue(spec: BaselineSpec, split: Path, state: dict[str, Any]) -> str:
@@ -235,6 +236,8 @@ def _collect(args: argparse.Namespace, task_id: str, run_name: str) -> CollectRe
     for check in report.checks:
         print(f"  ok: {check}")
     print("ClearML task deleted")
+    for warning in report.warnings:
+        print(f"WARNING: {warning}", file=sys.stderr)
     return report
 
 

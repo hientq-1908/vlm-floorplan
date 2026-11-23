@@ -129,6 +129,8 @@ def _collect(args: argparse.Namespace, task_id: str, run_name: str) -> CollectRe
     for check in report.checks:
         print(f"  ok: {check}")
     print("ClearML task deleted")
+    for warning in report.warnings:
+        print(f"WARNING: {warning}", file=sys.stderr)
     return report
 
 

@@ -11,6 +11,7 @@ import pytest
 
 from vlm_floorplan.evaluation.baseline_job import bundle_results
 from vlm_floorplan.evaluation.baseline_spec import RESULT_ARTIFACT
+from vlm_floorplan.evaluation.clearml_cleanup import CleanupReport
 from vlm_floorplan.evaluation.collect import (
     VERIFIED_MARKER,
     ConsoleLog,
@@ -63,8 +64,8 @@ class FakeTask:
         self.deleted = True
         return []
 
-    def remove_empty_project(self) -> list[str]:
-        return []
+    def remove_empty_project(self) -> CleanupReport:
+        return CleanupReport()
 
 
 def good_task(tmp_path: Path, **kwargs: Any) -> FakeTask:

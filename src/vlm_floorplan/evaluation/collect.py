@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from vlm_floorplan.evaluation.baseline_spec import RESULT_ARTIFACT
+from vlm_floorplan.evaluation.clearml_cleanup import CleanupReport
 from vlm_floorplan.evaluation.run_dir import verify_manifest
 
 COMPLETED = "completed"
@@ -69,10 +70,10 @@ class RemoteTask(Protocol):
     def console_log(self) -> ConsoleLog: ...
     def download_artifacts(self, dest: Path) -> dict[str, RemoteArtifact]: ...
     def delete(self) -> list[str]:
-        """Delete the task; return report lines for any of its files left on the server."""
+        """Delete the task; return a warning for any of its files left on the server."""
         ...
 
-    def remove_empty_project(self) -> list[str]:
+    def remove_empty_project(self) -> CleanupReport:
         """After `delete`: drop the task's project (and hidden subprojects) if empty."""
         ...
 
@@ -82,6 +83,8 @@ class CollectReport:
     dest: Path
     status: str
     checks: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    """What is still on ClearML after the delete and needs removing by hand."""
 
 
 def _write_json(path: Path, data: Any) -> None:
@@ -181,18 +184,21 @@ def collect_and_delete(
     else:
         checks.append(f"task ended as {status!r} without a result archive; logs kept")
 
-    _write_json(
-        dest / VERIFIED_MARKER,
-        {
-            "task_id": task.task_id,
-            "status": status,
-            "verified_at": datetime.now(UTC).isoformat(timespec="seconds"),
-            "checks": checks,
-        },
-    )
-    checks += task.delete()
+    marker = {
+        "task_id": task.task_id,
+        "status": status,
+        "verified_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        "checks": checks,
+    }
+    _write_json(dest / VERIFIED_MARKER, marker)
+    warnings = task.delete()
     try:
-        checks += task.remove_empty_project()
+        cleanup = task.remove_empty_project()
     except Exception as err:  # the download is verified and the task gone; do not fail the run
-        checks.append(f"project cleanup failed, remove it by hand: {type(err).__name__}: {err}")
-    return CollectReport(dest=dest, status=status, checks=checks)
+        warnings.append(f"project cleanup failed, remove it by hand: {type(err).__name__}: {err}")
+    else:
+        checks += cleanup.checks()
+        warnings += cleanup.warnings()
+    marker["clearml_leftovers"] = warnings
+    _write_json(dest / VERIFIED_MARKER, marker)
+    return CollectReport(dest=dest, status=status, checks=checks, warnings=warnings)
