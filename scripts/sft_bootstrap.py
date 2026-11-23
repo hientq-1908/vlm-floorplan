@@ -17,10 +17,12 @@ from __future__ import annotations
 
 import glob
 import os
+import re
 import subprocess
 import sys
 import tarfile
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 
 SOURCE_ARTIFACT = "repo_source"
@@ -36,7 +38,9 @@ if not torch.cuda.is_available():
     sys.exit("GPU CHECK FAILED: torch cannot use the GPU (driver too old for this torch build?)")
 print("gpu:", torch.cuda.get_device_name(0))
 x = torch.ones(64, 64, device="cuda", dtype=torch.bfloat16)
-print("bf16 matmul on the GPU ok:", float((x @ x)[0, 0]) == 64.0)
+if float((x @ x)[0, 0]) != 64.0:
+    sys.exit("GPU CHECK FAILED: a bf16 matmul on the GPU gave a wrong result")
+print("bf16 matmul on the GPU ok")
 """
 
 
@@ -59,17 +63,35 @@ def unpack_source(archive: Path, dest: Path) -> Path:
     return dest
 
 
+def newest_first(compat_dirs: list[str]) -> list[str]:
+    """The compat directories ordered by their CUDA version, newest first."""
+
+    def version(path: str) -> tuple[int, ...]:
+        return tuple(int(n) for n in re.findall(r"\d+", Path(path).parent.name))
+
+    return sorted(compat_dirs, key=version, reverse=True)
+
+
 def with_compat_libraries(env: dict[str, str], compat_dirs: list[str]) -> dict[str, str]:
-    """`env` with the CUDA compat directories first on LD_LIBRARY_PATH.
+    """`env` with the CUDA compat directories first on LD_LIBRARY_PATH."""
+    existing = [env["LD_LIBRARY_PATH"]] if env.get("LD_LIBRARY_PATH") else []
+    return {**env, "LD_LIBRARY_PATH": ":".join([*compat_dirs, *existing])}
+
+
+def choose_gpu_env(
+    env: dict[str, str], compat_dirs: list[str], gpu_works: Callable[[dict[str, str]], bool]
+) -> dict[str, str] | None:
+    """The first environment in which `gpu_works`: `env` as is, then with the compat libraries.
 
     The agent's driver (CUDA 12.8) is older than the CUDA 13 wheel of torch in `uv.lock`. On a
     data-center GPU such as the A10G, the newer user-space driver libraries in the image's compat
-    directory let it run anyway, but only if they are found before the host driver's.
+    directory let it run anyway. They break a GeForce card or a newer host driver, so they are
+    only tried when the plain environment fails. None when neither works.
     """
-    if not compat_dirs:
-        return env
-    existing = [env["LD_LIBRARY_PATH"]] if env.get("LD_LIBRARY_PATH") else []
-    return {**env, "LD_LIBRARY_PATH": ":".join([*compat_dirs, *existing])}
+    candidates = [env]
+    if compat_dirs:
+        candidates.append(with_compat_libraries(env, newest_first(compat_dirs)))
+    return next((candidate for candidate in candidates if gpu_works(candidate)), None)
 
 
 def uv_commands(source: Path, env_dir: Path) -> tuple[list[str], list[str], dict[str, str]]:
@@ -98,14 +120,22 @@ def main() -> int:
     subprocess.run(build, cwd=source, env=env, check=True)
 
     # Fail in seconds with a clear message instead of after the model download.
-    compat_dirs = sorted(glob.glob(CUDA_COMPAT_PATTERN))
+    try:
+        subprocess.run(["nvidia-smi"], check=False)
+    except FileNotFoundError:
+        print("nvidia-smi not found on PATH", flush=True)
+    compat_dirs = glob.glob(CUDA_COMPAT_PATTERN)
     print("CUDA compat directories:", compat_dirs or "none found", flush=True)
-    env = with_compat_libraries(env, compat_dirs)
-    subprocess.run(["nvidia-smi"], check=False)
     check = [*run[: run.index("python")], "python", "-c", GPU_CHECK]
-    if subprocess.run(check, cwd=source, env=env).returncode != 0:
+
+    def gpu_works(candidate: dict[str, str]) -> bool:
+        print("GPU check, LD_LIBRARY_PATH:", candidate.get("LD_LIBRARY_PATH", ""), flush=True)
+        return subprocess.run(check, cwd=source, env=candidate).returncode == 0
+
+    gpu_env = choose_gpu_env(env, compat_dirs, gpu_works)
+    if gpu_env is None:
         return 3
-    return subprocess.run(run, cwd=source, env=env).returncode
+    return subprocess.run(run, cwd=source, env=gpu_env).returncode
 
 
 if __name__ == "__main__":

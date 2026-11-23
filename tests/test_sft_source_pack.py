@@ -226,9 +226,37 @@ def test_compat_libraries_work_without_an_existing_library_path(bootstrap: Modul
     assert result["LD_LIBRARY_PATH"] == "/a/compat:/b/compat"
 
 
-def test_no_compat_directory_leaves_the_environment_alone(bootstrap: ModuleType) -> None:
+def test_gpu_env_stays_plain_when_the_gpu_works_without_compat_libraries(
+    bootstrap: ModuleType,
+) -> None:
     env = {"LD_LIBRARY_PATH": "/usr/lib/host"}
-    assert bootstrap.with_compat_libraries(env, []) == env
+    tried: list[dict[str, str]] = []
+    chosen = bootstrap.choose_gpu_env(
+        env, ["/usr/local/cuda-13.0/compat"], lambda e: tried.append(e) or True
+    )
+    assert chosen == env
+    assert tried == [env]
+
+
+def test_gpu_env_falls_back_to_the_newest_compat_libraries(bootstrap: ModuleType) -> None:
+    env = {"LD_LIBRARY_PATH": "/usr/lib/host"}
+    compat = [
+        "/usr/local/cuda-12.10/compat",
+        "/usr/local/cuda-13.0/compat",
+        "/usr/local/cuda-12.4/compat",
+    ]
+    chosen = bootstrap.choose_gpu_env(env, compat, lambda e: e != env)
+    assert chosen["LD_LIBRARY_PATH"] == (
+        "/usr/local/cuda-13.0/compat:/usr/local/cuda-12.10/compat:"
+        "/usr/local/cuda-12.4/compat:/usr/lib/host"
+    )
+
+
+@pytest.mark.parametrize("compat", [[], ["/usr/local/cuda-13.0/compat"]])
+def test_gpu_env_is_none_when_no_environment_reaches_the_gpu(
+    bootstrap: ModuleType, compat: list[str]
+) -> None:
+    assert bootstrap.choose_gpu_env({}, compat, lambda e: False) is None
 
 
 def test_gpu_check_fails_fast_with_a_clear_message_when_torch_sees_no_gpu(
