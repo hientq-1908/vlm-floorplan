@@ -153,6 +153,7 @@ def build_sets(config: BuildConfig) -> dict[str, Any]:
             config.teacher,
             rng,
             config.paraphrase_target,
+            index.texts,
             lambda ok, sent: log(f"paraphrase: {ok} accepted of {sent} sent"),
         )
     rows["handwritten_test"] = []

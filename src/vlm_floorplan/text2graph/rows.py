@@ -7,7 +7,6 @@ source plan of every record id, with polygons, for L4 closeness and the real ref
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any, Literal
 
@@ -80,12 +79,4 @@ def read_references(directory: Path) -> dict[str, PlanRecord]:
     if not path.exists():
         return {}
     records = [PlanRecord.model_validate_json(line) for line in path.read_text().splitlines()]
-    return {record.id: record for record in records if line_ok(record)}
-
-
-def line_ok(record: PlanRecord) -> bool:
-    return bool(record.id)
-
-
-def read_manifest(directory: Path) -> dict[str, Any]:
-    return json.loads((directory / MANIFEST_FILE).read_text())
+    return {record.id: record for record in records}

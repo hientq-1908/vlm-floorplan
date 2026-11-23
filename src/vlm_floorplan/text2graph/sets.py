@@ -168,6 +168,7 @@ def build_paraphrase_set(
     teacher: Teacher,
     rng: random.Random,
     target: int = PARAPHRASE_TARGET,
+    forbidden: Collection[str] = (),
     on_batch: Callable[[int, int], None] | None = None,
 ) -> tuple[list[PromptRow], dict[str, object]]:
     """Paraphrase template prompts until `target` pass both checks.
@@ -183,7 +184,9 @@ def build_paraphrase_set(
 
     def work(row: PromptRow):
         local = random.Random(seeds[row.id])
-        return row, teacher.checked_paraphrase(row.text, row.parsed_requirements(), local)
+        return row, teacher.checked_paraphrase(
+            row.text, row.parsed_requirements(), local, forbidden=forbidden
+        )
 
     with ThreadPoolExecutor(max_workers=8) as pool:
         for start in range(0, len(candidates), PARAPHRASE_BATCH):

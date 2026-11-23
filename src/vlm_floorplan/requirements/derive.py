@@ -3,8 +3,8 @@
 The text-to-graph prompts are generated from a real plan: its facts become requirements
 (`candidate_pool`), a level decides how many and of which kind (`derive_requirements`), and a
 template turns them into words. Because every requirement is a true fact of the source plan,
-the source plan meets its own prompt by construction; `tests/requirements/test_derive.py` checks
-that on every level.
+the source plan meets its own prompt by construction; `tests/requirements/test_requirements.py`
+checks that on every level.
 
 | Level | Requirements                                                                  |
 |-------|-------------------------------------------------------------------------------|

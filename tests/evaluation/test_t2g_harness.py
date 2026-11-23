@@ -4,11 +4,11 @@ from pathlib import Path
 import pytest
 from t2g_fixtures import make_record, write_split
 
-from vlm_floorplan.agent.tools import agent_tool_schemas
+from vlm_floorplan.agent.tools import NEW_PLAN, agent_tool_schemas, call_tool
 from vlm_floorplan.compact import to_compact
 from vlm_floorplan.evaluation.client import ChatResponse, parse_chat_response
 from vlm_floorplan.evaluation.t2g_harness import T2gConfig, build_request, collect_outputs
-from vlm_floorplan.evaluation.t2g_prompt import system_prompt, user_message
+from vlm_floorplan.evaluation.t2g_prompt import example_plan, system_prompt, user_message
 from vlm_floorplan.evaluation.t2g_score_one import reject_reason
 from vlm_floorplan.evaluation.t2g_scoring import score_run
 from vlm_floorplan.requirements import apply_labels
@@ -73,8 +73,14 @@ class GoldClient:
                 args = {"room_a": e["a"], "room_b": e["b"], "kind": e["link"]}
                 call = {"name": "set_link_kind", "arguments": json.dumps(args)}
             else:
+                new_id = f"r{len(row.start['floors'][0]['rooms'])}"
                 new = {"type": e["type"], "x": 500, "y": 500, "size": 40}
-                call = {"name": "add_room", "arguments": json.dumps(new)}
+                link = {"room_a": new_id, "room_b": e["near"], "kind": "wall"}
+                calls = [
+                    {"name": "add_room", "arguments": json.dumps(new)},
+                    {"name": "add_link", "arguments": json.dumps(link)},
+                ]
+                return ChatResponse("", "", "tool_calls", 1, 1, 0.0, tool_calls=calls)
             return ChatResponse("", "", "tool_calls", 1, 1, 0.0, tool_calls=[call])
         words = [group[0] for group in row.expect["groups"]]
         return ChatResponse(f"Do you mean {words[0]} or {words[-1]}?", "", "stop", 1, 1, 0.0)
@@ -102,9 +108,13 @@ def test_the_request_is_the_training_prompt_with_the_twelve_tools(sets):
     assert request["chat_template_kwargs"] == {"enable_thinking": True}
 
 
-def test_the_example_variant_adds_a_worked_new_plan_call():
-    assert system_prompt("one-example").startswith(system_prompt("as-is"))
-    assert "You call new_plan with plan = " in system_prompt("one-example")
+def test_the_worked_example_is_a_call_the_environment_accepts():
+    prompt = system_prompt("one-example")
+    assert prompt.startswith(system_prompt("as-is"))
+    plan = prompt.split("You call new_plan with plan = ", 1)[1].splitlines()[0]
+    empty = example_plan().model_copy(deep=True)
+    empty.floors[0].rooms, empty.floors[0].links = [], []
+    assert call_tool(empty, NEW_PLAN, {"plan": plan}).applied
     with pytest.raises(ValueError):
         system_prompt("two-examples")
 
@@ -148,6 +158,7 @@ def test_behavior_prompts_are_scored_by_what_the_model_did(sets, tmp_path):
     assert behavior["contradiction"]["correct_rate"] == 1.0
     assert behavior["unsupported"]["correct_rate"] == 1.0
     assert behavior["edit_door"]["edit_effect_ok_rate"] == 1.0
+    assert behavior["edit_add"]["edit_effect_ok_rate"] == 1.0
     assert summary["strict"]["all_met_prompts"] >= 1  # the restart prompts are scored as draws
     silent, _, _ = run(sets, "behavior_test", "silent", tmp_path)
     assert silent["behavior"]["edit_door"]["correct_rate"] == 0.0
@@ -201,3 +212,41 @@ def test_the_http_client_keeps_structured_tool_calls():
 )
 def test_reject_reason(text, reason):
     assert reject_reason(text) == reason
+
+
+def test_a_generic_question_does_not_name_the_issue(sets, tmp_path):
+    from vlm_floorplan.evaluation.t2g_score_one import score_behavior
+
+    rows = {r.kind: r for r in read_rows(sets / "behavior_test.jsonl")}
+    unsupported = rows["unsupported"]
+    vague = {
+        "content": "Which floor plan layout would you like? Someone will check.",
+        "tool_calls": [],
+    }
+    assert score_behavior(unsupported, vague)["asked_question"]
+    assert not score_behavior(unsupported, vague)["correct"]
+    contradiction = rows["contradiction"]
+    assert not score_behavior(contradiction, vague)["correct"]
+
+
+def test_rescoring_without_references_fails_loudly(sets, tmp_path):
+    _, run_dir, _ = run(sets, "template_test", "gold", tmp_path, limit=3)
+    rows = read_rows(sets / "template_test.jsonl")[:3]
+    with pytest.raises(FileNotFoundError):
+        score_run(run_dir, rows, tmp_path / "elsewhere")
+    assert score_run(run_dir, rows, sets)["real_reference"]["n_plans"] == 3
+
+
+def test_flag_rates_survive_a_failed_first_row(sets, tmp_path):
+    _, run_dir, _ = run(sets, "behavior_test", "gold", tmp_path)
+    rows = read_rows(sets / "behavior_test.jsonl")
+    first_edit = next(r for r in rows if r.kind == "edit_door")
+    lines = [json.loads(line) for line in (run_dir / "outputs.jsonl").read_text().splitlines()]
+    for line in lines:
+        if line["prompt_id"] == first_edit.id:
+            line.clear()
+            line.update({"prompt_id": first_edit.id, "api_error": "boom"})
+    (run_dir / "outputs.jsonl").write_text("".join(json.dumps(x) + "\n" for x in lines))
+    summary = score_run(run_dir, rows)
+    entry = summary["behavior"]["edit_door"]
+    assert entry["edit_effect_ok_rate"] < 1.0 and "edit_tools_only_rate" in entry

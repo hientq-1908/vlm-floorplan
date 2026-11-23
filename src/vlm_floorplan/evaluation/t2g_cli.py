@@ -68,7 +68,7 @@ def run_command(args: argparse.Namespace) -> int:
         config = T2gConfig.model_validate_json((args.run_dir / "config.json").read_text())
         prompts = args.prompts or Path(config.prompts)
         rows = read_rows(prompts)[: config.limit]
-        run_dir = args.run_dir
+        run_dir, sets_dir = args.run_dir, prompts.parent
     else:
         config = T2gConfig(
             run_name=args.run_name,
@@ -89,6 +89,7 @@ def run_command(args: argparse.Namespace) -> int:
         run_dir = args.out_dir / config.run_name
         client = HttpChatClient(config.base_url, config.api_key_env, config.timeout_s)
         rows = collect_outputs(config, client, run_dir)
-    print(headline(score_run(run_dir, rows)))
+        sets_dir = None
+    print(headline(score_run(run_dir, rows, sets_dir)))
     print(f"run directory: {run_dir}")
     return 0

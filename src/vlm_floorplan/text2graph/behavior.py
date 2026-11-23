@@ -38,11 +38,23 @@ _RESTARTS = (
     "Throw this plan away and begin again.",
 )
 _UNSUPPORTED_ASKS = {
-    "area": ("of about {m} square metres", ["square", "metre", "meter", "m2", "area"]),
-    "compass": ("with the living room facing south", ["south", "facing", "direction", "compass"]),
-    "storeys": ("on two storeys", ["storey", "story", "floor", "level"]),
-    "ceiling": ("with 3 metre high ceilings", ["ceiling", "height", "metre", "meter"]),
-    "building_floor": ("on the 5th floor of the building", ["floor", "5th", "fifth"]),
+    "area": (
+        "of about {m} square metres",
+        ["square metres", "square meters", "square metre", "square meter", "m2", "sqm"],
+    ),
+    "compass": (
+        "with the living room facing south",
+        ["south", "facing", "direction", "orientation", "compass"],
+    ),
+    "storeys": (
+        "on two storeys",
+        ["storey", "storeys", "story", "stories", "two floors", "second floor", "two levels"],
+    ),
+    "ceiling": ("with 3 metre high ceilings", ["ceiling", "ceilings"]),
+    "building_floor": (
+        "on the 5th floor of the building",
+        ["5th", "fifth", "5th floor", "floor of the building"],
+    ),
 }
 
 
@@ -56,7 +68,7 @@ def _name(room: Room, graph: FloorplanGraph) -> str:
     return f"{_noun(room.type)} {room.id}" if repeated else f"the {_noun(room.type)}"
 
 
-def _row(index: int, kind: str, behavior: str, text: str, graph: FloorplanGraph, **extra) -> dict:
+def _row(index: int, kind: str, behavior: str, text: str, **extra) -> dict:
     return {
         "id": f"B{index:03d}",
         "set": "behavior_test",
@@ -107,7 +119,7 @@ def edit_row(
         text = f"Add a {_noun(new_type)} off {_name(anchor, graph)}."
         expect = {"edit": "add", "type": new_type.value, "near": anchor.id}
     return PromptRow(
-        **_row(index, f"edit_{kind}", "edit", text, graph),
+        **_row(index, f"edit_{kind}", "edit", text),
         source=source,
         record_id=record_id,
         start=start,
@@ -128,7 +140,7 @@ def restart_row(
     kind = choose_kind(2, reqs, rng)
     request = render_text(other, reqs, kind, source, rng)
     return PromptRow(
-        **_row(index, "restart", "restart", f"{rng.choice(_RESTARTS)} {request}", graph),
+        **_row(index, "restart", "restart", f"{rng.choice(_RESTARTS)} {request}"),
         source=source,
         record_id=record_id,
         requirements=requirements_to_json(reqs),
@@ -148,7 +160,10 @@ def contradiction_row(
     choice = rng.randrange(4)
     if choice == 0:
         text = f"A one-bedroom flat with {NUMBER_WORDS[n]} bedrooms and a small kitchen."
-        groups = [["one", "1"], _words(n)]
+        groups = [
+            ["one-bedroom", "one bedroom", "1-bedroom", "1 bedroom", "single bedroom"],
+            _words(n),
+        ]
     elif choice == 1:
         text = f"A studio with {NUMBER_WORDS[n]} bedrooms."
         groups = [["studio"], _words(n)]
@@ -161,7 +176,7 @@ def contradiction_row(
         text = f"Exactly two bedrooms please, and also {NUMBER_WORDS[n + 1]} bedrooms in total."
         groups = [["two", "2"], _words(n + 1)]
     return PromptRow(
-        **_row(index, "contradiction", "contradiction", text, graph),
+        **_row(index, "contradiction", "contradiction", text),
         source=source,
         record_id=record_id,
         start=empty_start(graph),
@@ -181,7 +196,7 @@ def unsupported_row(
     )
     groups = [_UNSUPPORTED_ASKS[a][1] for a in asks]
     return PromptRow(
-        **_row(index, "unsupported", "unsupported", text, graph),
+        **_row(index, "unsupported", "unsupported", text),
         source=source,
         record_id=record_id,
         start=empty_start(graph),

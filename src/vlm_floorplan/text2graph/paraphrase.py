@@ -23,7 +23,7 @@ import random
 import re
 import urllib.request
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass, field
 
 from pydantic import ValidationError
@@ -33,9 +33,9 @@ from vlm_floorplan.requirements import (
     Adjacent,
     Requirement,
     requirements_from_json,
-    requirements_to_json,
 )
 from vlm_floorplan.schema import RoomType
+from vlm_floorplan.text2graph.leak import normalize_text
 from vlm_floorplan.text2graph.templates import Describer
 from vlm_floorplan.text2graph.words import NOUNS, Style, slot_check
 
@@ -178,6 +178,7 @@ class Teacher:
         requirements: Sequence[Requirement],
         rng: random.Random,
         attempts: int = 3,
+        forbidden: Collection[str] = (),
     ) -> ParaphraseResult:
         """A paraphrase that passes both checks, or a result with `text` None."""
         persona = rng.choice(PERSONAS) if rng.random() < PERSONA_SHARE else None
@@ -186,6 +187,8 @@ class Teacher:
             try:
                 candidate = self.paraphrase(original, requirements, persona)
                 problems = slot_check(candidate, requirements) if candidate else ["empty reply"]
+                if normalize_text(candidate) in forbidden:
+                    problems = ["equals a train prompt"]
                 if not problems:
                     found = self.extract(candidate)
                     if found is None:
@@ -199,10 +202,6 @@ class Teacher:
                 return ParaphraseResult(candidate, persona is not None, attempt, reasons)
             reasons.append("; ".join(problems))
         return ParaphraseResult(None, persona is not None, attempts, reasons)
-
-
-def requirements_match(found: Sequence[Requirement] | None, wanted: Sequence[Requirement]) -> bool:
-    return found is not None and _normalize(found) == _normalize(wanted)
 
 
 def teacher_from_env() -> Teacher:
@@ -231,7 +230,3 @@ def _pick_model(base_url: str, key: str) -> str:
     if not candidates:
         raise RuntimeError("the teacher endpoint lists no models")
     return next((i for i in candidates if "flash" in i.lower()), candidates[0])
-
-
-def requirements_json(requirements: Sequence[Requirement]) -> list[dict]:
-    return requirements_to_json(list(requirements))

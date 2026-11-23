@@ -92,6 +92,10 @@ def _requirement_scores(scored: Sequence[dict[str, Any]], key: str) -> dict[str,
     }
 
 
+_EDIT_FLAGS = ("edit_tools_only", "edit_effect_ok")
+_QUESTION_FLAGS = ("asked_question", "names_issue")
+
+
 def _behavior_scores(scored: Sequence[dict[str, Any]]) -> dict[str, Any]:
     groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in scored:
@@ -105,9 +109,9 @@ def _behavior_scores(scored: Sequence[dict[str, Any]]) -> dict[str, Any]:
             "new_plan_rate": ratio(sum(r["called_new_plan"] for r in rows), n),
             "no_tool_call_rate": ratio(sum(r["no_tool_call"] for r in rows), n),
         }
-        for flag in ("edit_tools_only", "edit_effect_ok", "asked_question", "names_issue"):
-            if flag in rows[0]:
-                entry[f"{flag}_rate"] = ratio(sum(bool(r.get(flag)) for r in rows), n)
+        flags = _EDIT_FLAGS if kind.startswith("edit") else _QUESTION_FLAGS
+        for flag in flags:
+            entry[f"{flag}_rate"] = ratio(sum(bool(r.get(flag)) for r in rows), n)
         result[kind] = entry
     return result
 
@@ -151,11 +155,19 @@ def aggregate_run(scored: Sequence[dict[str, Any]]) -> dict[str, Any]:
     return summary
 
 
-def score_run(run_dir: Path, rows: list[PromptRow]) -> dict[str, Any]:
-    """Score every prompt in `outputs.jsonl`, write `per_prompt.jsonl` and `metrics.json`."""
+def score_run(run_dir: Path, rows: list[PromptRow], sets_dir: Path | None = None) -> dict[str, Any]:
+    """Score every prompt in `outputs.jsonl`, write `per_prompt.jsonl` and `metrics.json`.
+
+    The references and reference tables are read from `sets_dir`, by default the directory of
+    the prompts file in `config.json`. A rescore of a collected run passes the directory it
+    actually has. Missing references for prompts that name a record raise `FileNotFoundError`,
+    so a rescore never silently writes degraded metrics.
+    """
     config = json.loads((run_dir / "config.json").read_text())
-    directory = Path(config["prompts"]).parent
+    directory = sets_dir or Path(config["prompts"]).parent
     references = read_references(directory)
+    if any(row.record_id for row in rows) and not references:
+        raise FileNotFoundError(f"no {REFERENCES_FILE} with plans in {directory}")
     tables_path = directory / TABLES_FILE
     tables = (
         ReferenceTables.model_validate_json(tables_path.read_text())

@@ -123,12 +123,13 @@ def score_draw(
     }
 
 
-_QUESTION_END = re.compile(r"\?\s*$")
+def _has_word(text: str, word: str) -> bool:
+    """Whole-word match, so "one" is not found in "someone" or "floor" in "floor plan" by luck."""
+    return re.search(rf"(?<![A-Za-z0-9]){re.escape(word)}(?![A-Za-z0-9])", text, re.I) is not None
 
 
 def _mentions(content: str, groups: list[list[str]], need: str) -> bool:
-    lowered = content.lower()
-    hits = [any(word.lower() in lowered for word in group) for group in groups]
+    hits = [any(_has_word(content, word) for word in group) for group in groups]
     return all(hits) if need == "all" else any(hits)
 
 
@@ -165,7 +166,7 @@ def score_behavior(row: PromptRow, output: dict[str, Any]) -> dict[str, Any]:
         effect = edited and _edit_effect(row.start_graph(), calls, row.expect)
         result |= {"edit_tools_only": edited, "edit_effect_ok": effect, "correct": effect}
     else:
-        asked = not calls and bool(_QUESTION_END.search(content) or "?" in content)
+        asked = not calls and "?" in content
         named = asked and _mentions(content, row.expect["groups"], row.expect["need"])
         result |= {"asked_question": asked, "names_issue": named, "correct": named}
     return result

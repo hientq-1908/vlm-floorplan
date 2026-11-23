@@ -84,3 +84,11 @@ def test_parse_extraction_rejects_what_is_not_a_requirement_list():
 
 def test_plain_requirements_are_fixed_phrases():
     assert plain_requirements(REQS) == ["3 bedrooms", "a kitchen open to a living room"]
+
+
+def test_a_paraphrase_equal_to_a_train_prompt_is_a_failed_attempt():
+    other = "Three bedrooms please, with the kitchen open to the living room."
+    t, _ = teacher([GOOD, other], [GOOD_JSON])
+    forbidden = {" ".join(GOOD.lower().split())}
+    result = t.checked_paraphrase("orig", REQS, random.Random(1), attempts=2, forbidden=forbidden)
+    assert result.text == other and result.reasons == ["equals a train prompt"]

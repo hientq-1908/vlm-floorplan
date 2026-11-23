@@ -172,6 +172,18 @@ uv run --group ml python scripts/clearml_baseline.py collect --task-id TASK_ID -
 
 Results land in `~/Documents/pets/vlm-floorplan-runs/<run-name>/result/<variant>-<set>/`.
 
+## Gates for the SFT run
+
+These thresholds are proposed in the plan (section 5.5) and are not enforced by any code.
+They will be set with the captain after the zero-shot baseline numbers exist.
+
+- Strict tool-call rate at least 98 %, and validity at least 98 %.
+- All-met at least 90 % on L1 and L2, and at least 75 % on L3, measured on the template test.
+- The paraphrased and hand-written sets within 10 points of the template set; a larger gap means the model learned the templates.
+- Every plausibility metric within the real band, for example crossings at most 1.5 times the real rate.
+- Distinct structures per prompt at least 4 of 8 on L1 and L2, which needs the diversity metrics.
+- General retention: no benchmark more than 2 points below base.
+
 ## Not measured yet
 
 - Diversity (distinct structures, layout spread, copy rate) needs 8 samples per prompt.

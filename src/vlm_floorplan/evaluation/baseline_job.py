@@ -105,7 +105,7 @@ def run_text_baseline(
             try:
                 log.info("evaluating %s", name)
                 rows = collect_t2g(config, client, out_dir / name)
-                scores[name] = score_t2g(out_dir / name, rows)
+                scores[name] = score_t2g(out_dir / name, rows, sets_dir)
             except Exception as err:
                 log.exception("run %s failed", name)
                 errors[name] = f"{type(err).__name__}: {err}"
