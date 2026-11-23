@@ -119,6 +119,7 @@ class ClearMlTask:
 
         self.task_id = task_id
         self.task = Task.get_task(task_id=task_id)
+        self.project_id = self.task.project
 
     def status(self) -> str:
         return str(self.task.get_status())
@@ -153,6 +154,13 @@ class ClearMlTask:
             raise_on_error=True,
         ):
             raise RuntimeError(f"ClearML did not delete task {self.task_id}")
+
+    def remove_empty_project(self) -> list[str]:
+        from clearml.backend_api.session.client import APIClient
+
+        from vlm_floorplan.evaluation.clearml_cleanup import remove_empty_projects
+
+        return remove_empty_projects(APIClient(), self.project_id).lines()
 
 
 def create_and_enqueue(spec: BaselineSpec, split: Path, state: dict[str, Any]) -> str:

@@ -62,6 +62,9 @@ class FakeTask:
     def delete(self) -> None:
         self.deleted = True
 
+    def remove_empty_project(self) -> list[str]:
+        return []
+
 
 def good_task(tmp_path: Path, **kwargs: Any) -> FakeTask:
     archive = make_result_zip(tmp_path)

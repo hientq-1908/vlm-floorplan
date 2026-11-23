@@ -269,6 +269,9 @@ class FakeTask:
     def delete(self) -> None:
         self.deleted = True
 
+    def remove_empty_project(self) -> list[str]:
+        return []
+
 
 def collect(task: FakeTask, dest: Path) -> None:
     collect_and_delete(task, dest, result_artifact=RESULT_ARTIFACT, check_result=check_sft_result)

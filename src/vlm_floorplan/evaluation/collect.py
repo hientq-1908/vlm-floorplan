@@ -69,6 +69,9 @@ class RemoteTask(Protocol):
     def console_log(self) -> ConsoleLog: ...
     def download_artifacts(self, dest: Path) -> dict[str, RemoteArtifact]: ...
     def delete(self) -> None: ...
+    def remove_empty_project(self) -> list[str]:
+        """After `delete`: drop the task's project (and hidden subprojects) if empty."""
+        ...
 
 
 @dataclass
@@ -185,4 +188,8 @@ def collect_and_delete(
         },
     )
     task.delete()
+    try:
+        checks += task.remove_empty_project()
+    except Exception as err:  # the download is verified and the task gone; do not fail the run
+        checks.append(f"project cleanup failed, remove it by hand: {type(err).__name__}: {err}")
     return CollectReport(dest=dest, status=status, checks=checks)

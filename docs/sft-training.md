@@ -183,6 +183,8 @@ The collector is the baseline's: it deletes the task only after verification.
 4. A successful job left its outputs: `smoke.json` for a smoke run, otherwise `adapter/adapter_config.json`, `adapter/adapter_model.safetensors`, `train_summary.json` and `data_report.json`.
 5. Task details, scalars and the console log are saved.
 
+6. After the task is deleted, its ClearML project (and hidden subprojects) is deleted too when empty; a project that still holds anything is left alone and reported.
+
 A failed task is downloaded the same way, since its logs are the point, and then deleted.
 The job writes `job.log` into the result, which is the complete log.
 The agent cannot clone the private repository, so the launcher uploads the source with the task: `git archive HEAD` filtered again so that data, outputs and secret-looking files never leave the machine (`source_pack.py`).
