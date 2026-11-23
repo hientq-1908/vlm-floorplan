@@ -63,10 +63,12 @@ class SftSpec(BaseModel):
         """Flat string parameters, the form ClearML hyperparameters take."""
         return {
             "run_name": self.run_name,
+            "project": self.project,
             "queue": self.queue,
             "config": self.config,
             "overrides": json.dumps(self.overrides),
             "smoke": "true" if self.smoke else "false",
+            "docker_image": self.docker_image or "",
         }
 
 
@@ -74,10 +76,12 @@ def spec_from_parameters(params: dict[str, str]) -> SftSpec:
     """Rebuild the spec from the flat string parameters the launcher attached."""
     return SftSpec(
         run_name=params["run_name"],
+        project=params["project"],
         queue=params["queue"],
         config=params["config"],
         overrides=json.loads(params["overrides"]),
         smoke=params["smoke"] == "true",
+        docker_image=params["docker_image"] or None,
     )
 
 

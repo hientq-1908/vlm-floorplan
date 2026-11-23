@@ -31,7 +31,7 @@ class CleanupReport:
 
 
 def _contents(client: Any, project_id: str) -> str:
-    tasks = client.tasks.get_all(project=[project_id], only_fields=["id"])
+    tasks = client.tasks.get_all(project=[project_id], search_hidden=True, only_fields=["id"])
     models = client.models.get_all(project=[project_id], only_fields=["id"])
     parts = []
     if tasks:

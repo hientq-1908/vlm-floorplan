@@ -187,7 +187,8 @@ def test_bootstrap_builds_the_env_from_the_lockfile_with_python_3_12(
     bootstrap: ModuleType, tmp_path: Path
 ) -> None:
     build, run, env = bootstrap.uv_commands(tmp_path / "src", tmp_path / "venv")
-    assert build[:2] == ["uv", "sync"] and run[:2] == ["uv", "run"]
+    uv = [sys.executable, "-m", "uv"]  # the uv that pip just installed, not whatever is on PATH
+    assert build[:4] == [*uv, "sync"] and run[:4] == [*uv, "run"]
     for command in (build, run):
         assert "--frozen" in command  # never re-resolve: the lockfile is the environment
         assert command[command.index("--python") + 1] == "3.12"

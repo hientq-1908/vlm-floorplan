@@ -25,6 +25,8 @@ class FakeServer:
     projects: dict[str, str]
     tasks: dict[str, list[str]] = field(default_factory=dict)
     models: dict[str, list[str]] = field(default_factory=dict)
+    hidden_tasks: dict[str, list[str]] = field(default_factory=dict)
+    """Tasks the server lists only when asked with `search_hidden=True`, such as dataset tasks."""
     deleted: list[str] = field(default_factory=list)
 
     @property
@@ -47,14 +49,24 @@ class FakeServer:
                 server.deleted.append(server.projects.pop(project))
 
         class Items:
-            def __init__(self, table: dict[str, list[str]]) -> None:
+            def __init__(
+                self, table: dict[str, list[str]], hidden: dict[str, list[str]] | None = None
+            ) -> None:
                 self.table = table
+                self.hidden = hidden or {}
 
-            def get_all(self, project: list[str], **_: Any) -> list[Any]:
-                return [SimpleNamespace(id=i) for i in self.table.get(project[0], [])]
+            def get_all(
+                self, project: list[str], search_hidden: bool = False, **_: Any
+            ) -> list[Any]:
+                ids = list(self.table.get(project[0], []))
+                if search_hidden:
+                    ids += self.hidden.get(project[0], [])
+                return [SimpleNamespace(id=i) for i in ids]
 
         return SimpleNamespace(
-            projects=Projects(), tasks=Items(server.tasks), models=Items(server.models)
+            projects=Projects(),
+            tasks=Items(server.tasks, server.hidden_tasks),
+            models=Items(server.models),
         )
 
 
@@ -93,6 +105,16 @@ def test_nonempty_subproject_keeps_its_parent_too() -> None:
     report = remove_empty_projects(server.client, "p1")
     assert server.deleted == []
     assert set(report.kept) == {"vlm-floorplan", "vlm-floorplan/.datasets"}
+
+
+def test_subproject_holding_a_hidden_dataset_task_is_left_alone() -> None:
+    server = FakeServer(
+        {"p1": "vlm-floorplan", "p2": "vlm-floorplan/.datasets"},
+        hidden_tasks={"p2": ["someone-elses-dataset"]},
+    )
+    report = remove_empty_projects(server.client, "p1")
+    assert server.deleted == []
+    assert "1 task(s)" in report.kept["vlm-floorplan/.datasets"]
 
 
 def test_similarly_named_project_is_not_a_subproject() -> None:

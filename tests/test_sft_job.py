@@ -40,12 +40,18 @@ def train_file(tmp_path: Path) -> Path:
     return write_samples(tmp_path / "train.jsonl", [make_sample("A"), make_sample("B")])
 
 
-def test_job_parameters_round_trip_through_strings() -> None:
+@pytest.mark.parametrize("docker_image", ["nvidia/cuda:12.4", None])
+def test_job_parameters_round_trip_through_strings(docker_image: str | None) -> None:
     spec = SftSpec(
-        queue="gpu", run_name="r", overrides=["train.learning_rate=5e-5", "lora.r=16"], smoke=True
+        queue="gpu",
+        run_name="r",
+        project="elsewhere",
+        overrides=["train.learning_rate=5e-5", "lora.r=16"],
+        smoke=True,
+        docker_image=docker_image,
     )
-    rebuilt = spec_from_parameters(spec.job_parameters())
-    assert (rebuilt.run_name, rebuilt.overrides, rebuilt.smoke) == ("r", spec.overrides, True)
+    assert all(isinstance(v, str) for v in spec.job_parameters().values())
+    assert spec_from_parameters(spec.job_parameters()) == spec
 
 
 def test_agent_config_uses_the_agents_paths_and_reports_to_clearml(tmp_path: Path) -> None:

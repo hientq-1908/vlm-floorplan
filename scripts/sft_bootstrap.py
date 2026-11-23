@@ -49,8 +49,9 @@ def uv_commands(source: Path, env_dir: Path) -> tuple[list[str], list[str], dict
     """The environment build command, the job command, and the environment variables for both."""
     env = {**os.environ, "UV_PROJECT_ENVIRONMENT": str(env_dir)}
     flags = ["--frozen", "--no-dev", "--group", "ml", "--python", PYTHON_VERSION]
-    build = ["uv", "sync", *flags]
-    run = ["uv", "run", *flags, "python", str(source / "scripts" / "sft_job.py")]
+    uv = [sys.executable, "-m", "uv"]
+    build = [*uv, "sync", *flags]
+    run = [*uv, "run", *flags, "python", str(source / "scripts" / "sft_job.py")]
     return build, run, env
 
 
