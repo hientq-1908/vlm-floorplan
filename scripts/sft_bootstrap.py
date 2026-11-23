@@ -7,7 +7,8 @@ credentials to clone the private repo. The repository source travels as the task
 1. unpacks that archive,
 2. installs `uv` and builds the project environment from `uv.lock` with Python 3.12 (the agent's
    docker image only ships an older Python), so the environment is the one the tests ran in,
-3. runs `scripts/sft_job.py` inside it, which does the training and uploads the result.
+3. checks that torch can use the GPU, retrying with the image's CUDA compat libraries if not,
+4. runs `scripts/sft_job.py` inside it, which does the training and uploads the result.
 
 It must stay standalone and run on the agent's old Python: standard library only, plus `clearml`
 (already installed by the agent). Its exit code is the job's, so a failure marks the task failed.
