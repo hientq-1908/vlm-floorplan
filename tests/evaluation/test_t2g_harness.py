@@ -74,7 +74,7 @@ class GoldClient:
                 {"rooms": [{"id": "r0", "type": "living", "xy": [5, 5]}], "links": []}
             )
             return reply(calls=[] if made else [(NEW_PLAN, {"plan": plan})])
-        if made and (row.behavior != "edit" or row.expect["edit"] == "link" or len(made) == 2):
+        if made and (row.behavior != "edit" or row.expect["edit"] == "link" or len(made) == 3):
             return reply("Done.")
         if row.behavior == "restart" and self.mode == "keep":
             return reply(calls=[(NEW_PLAN, {"plan": to_compact(row.start_graph())})])
@@ -89,9 +89,11 @@ class GoldClient:
             if not made:
                 new = {"type": e["type"], "x": 500, "y": 500, "size": 40}
                 return reply(calls=[("add_room", new)])
-            added = re.search(r"room (r\d+)", messages[-1]["content"])[1]
+            added = re.search(r"room (r\d+)", messages[-3 if len(made) == 2 else -1]["content"])[1]
             link = {"room_a": added, "room_b": e["near"], "kind": "wall"}
-            return reply(calls=[("add_link", link)])
+            if len(made) == 1:
+                return reply(calls=[("add_link", link)])
+            return reply(calls=[("set_link_kind", link | {"kind": "door"})])
         words = [group[0] for group in row.expect["groups"]]
         return reply(f"Do you mean {words[0]} or {words[-1]}?")
 
@@ -226,8 +228,8 @@ def test_the_loop_runs_each_call_and_sends_back_the_real_tool_response(sets, tmp
     rows = {r.id: r for r in read_rows(sets / "behavior_test.jsonl")}
     outputs = [json.loads(line) for line in (run_dir / "outputs.jsonl").read_text().splitlines()]
     add = next(o for o in outputs if rows[o["prompt_id"]].kind == "edit_add")
-    assert [c["name"] for c in add["calls"]] == ["add_room", "add_link"]
-    assert [len(t["tool_calls"]) for t in add["turns"]] == [1, 1, 0]
+    assert [c["name"] for c in add["calls"]] == ["add_room", "add_link", "set_link_kind"]
+    assert [len(t["tool_calls"]) for t in add["turns"]] == [1, 1, 1, 0]
     assert add["final_content"] == "Done." and not add["hit_call_cap"]
     row = rows[add["prompt_id"]]
     expected = call_tool(row.start_graph(), "add_room", json.loads(add["calls"][0]["arguments"]))
@@ -362,3 +364,59 @@ def test_flag_rates_survive_a_failed_first_row(sets, tmp_path):
     summary = score_run(run_dir, rows)
     entry = summary["behavior"]["edit_door"]
     assert entry["edit_effect_ok_rate"] < 1.0 and "edit_tools_only_rate" in entry
+
+
+def _played(row, calls):
+    """A transcript of `calls` played through the environment from the row's start plan."""
+    graph = row.start_graph()
+    for name, args in calls:
+        result = call_tool(graph, name, args)
+        assert result.applied, result.text
+        graph = result.graph
+    return {
+        "tool_calls": [{"name": calls[0][0]}],
+        "calls": [
+            {"name": name, "arguments": json.dumps(args), "applied": True} for name, args in calls
+        ],
+        "final_graph": graph.model_dump(mode="json"),
+    }
+
+
+def _new_room_calls(row, kinds):
+    e = row.expect
+    new_id = f"r{len(row.start_graph().rooms())}"
+    calls = [("add_room", {"type": e["type"], "x": 500, "y": 500, "size": 40})]
+    link = {"room_a": new_id, "room_b": e["near"]}
+    calls += [("add_link", link | {"kind": "wall"})]
+    calls += [("set_link_kind", link | {"kind": kind}) for kind in kinds]
+    return calls
+
+
+def test_an_added_room_counts_only_with_a_door_or_opening_to_the_anchor(sets):
+    from vlm_floorplan.evaluation.t2g_score_one import score_behavior
+
+    row = next(r for r in read_rows(sets / "behavior_test.jsonl") if r.kind == "edit_add")
+    # "Add a storage off the living room": reached from the living room, so a passage.
+    assert score_behavior(row, _played(row, _new_room_calls(row, ["door"])))["correct"]
+    assert score_behavior(row, _played(row, _new_room_calls(row, ["opening"])))["correct"]
+    assert not score_behavior(row, _played(row, _new_room_calls(row, [])))["correct"]
+
+
+def test_an_edit_that_also_removes_a_room_is_not_correct(sets):
+    from vlm_floorplan.evaluation.t2g_score_one import score_behavior
+
+    rows = read_rows(sets / "behavior_test.jsonl")
+    door = next(r for r in rows if r.kind == "edit_door")
+    e = door.expect
+    change = ("set_link_kind", {"room_a": e["a"], "room_b": e["b"], "kind": "door"})
+    assert score_behavior(door, _played(door, [change]))["correct"]
+    other = next(r.id for r in door.start_graph().rooms() if r.id not in (e["a"], e["b"]))
+    removed = [("delete_room", {"room_id": other}), change]
+    assert not score_behavior(door, _played(door, removed))["correct"]
+    add = next(r for r in rows if r.kind == "edit_add")
+    ids = [r.id for r in add.start_graph().rooms()]
+    victim = next(
+        i for i in ids if i not in (add.expect["near"], max(ids, key=lambda x: int(x[1:])))
+    )
+    calls = [("delete_room", {"room_id": victim}), *_new_room_calls(add, ["door"])]
+    assert not score_behavior(add, _played(add, calls))["correct"]

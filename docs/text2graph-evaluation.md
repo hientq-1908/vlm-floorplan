@@ -141,7 +141,7 @@ The gap between them is how often the model follows the format.
 | | `rare_link_rate` | Links whose (type pair, kind) is under 0.5 % of real train links. |
 | | `room_count_in_band_rate` | Total rooms within the real 5th to 95th percentile for the plan's bedroom count. |
 | | `indoor_inside_wall_rate` | Indoor rooms whose point is inside the exterior wall. |
-| Behavior | `correct_rate` per kind | Edits: edit tools only, and the final plan has the link asked for, or a new room of the type linked to the anchor. Restarts: an accepted `new_plan` whose final plan meets every requirement. Questions, read from the first reply: no tool call, a question, and every conflicting term (contradiction) or any unsupported term (unsupported) named. |
+| Behavior | `correct_rate` per kind | Edits: edit tools only, and the final plan is the start plan plus the asked change: the link of the kind asked for, or a new room of the type with a door or opening (not only a wall) to the anchor; every start room keeps its id, type, point, size and entrance flag, and every other start link keeps its kind. Restarts: an accepted `new_plan` whose final plan meets every requirement. Questions, read from the first reply: no tool call, a question, and every conflicting term (contradiction) or any unsupported term (unsupported) named. |
 
 Plausibility is computed on strict plans, and `plausibility_incl_lenient` adds the lenient ones.
 `real_reference` is the same plausibility computed on the source plans of the prompts: the band a generated plan should fall in.

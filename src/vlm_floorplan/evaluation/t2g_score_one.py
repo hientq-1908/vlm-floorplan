@@ -23,7 +23,7 @@ from vlm_floorplan.evaluation.parser import parse_model_output
 from vlm_floorplan.evaluation.plausibility import ReferenceTables, plan_plausibility
 from vlm_floorplan.record import PlanRecord
 from vlm_floorplan.requirements import check_requirements
-from vlm_floorplan.schema import FloorplanGraph
+from vlm_floorplan.schema import FloorplanGraph, LinkKind
 from vlm_floorplan.text2graph.rows import PromptRow
 
 _REASONS = (
@@ -144,17 +144,49 @@ def _mentions(content: str, groups: list[list[str]], need: str) -> bool:
     return all(hits) if need == "all" else any(hits)
 
 
+def _pair(a: str, b: str) -> frozenset[str]:
+    return frozenset((a, b))
+
+
+def _kept(start: FloorplanGraph, final: FloorplanGraph, changed: frozenset[str] | None) -> bool:
+    """Every start room keeps its id, type, point, size and entrance flag, and every start link
+    keeps its kind, except the `changed` link."""
+    rooms = {room.id: room for room in final.rooms()}
+    for room in start.rooms():
+        got = rooms.get(room.id)
+        if got is None or (got.type, got.xy, got.size, got.entrance) != (
+            room.type,
+            room.xy,
+            room.size,
+            room.entrance,
+        ):
+            return False
+    kinds = {_pair(link.a, link.b): link.kind for link in final.floors[0].links}
+    return all(
+        kinds.get(_pair(link.a, link.b)) == link.kind
+        for link in start.floors[0].links
+        if _pair(link.a, link.b) != changed
+    )
+
+
 def _edit_effect(start: FloorplanGraph, final: FloorplanGraph, expect: dict) -> bool:
-    """The final plan has the link asked for, or a new room of the type linked to the anchor."""
+    """The final plan is the start plan plus the asked change: the link of the kind asked for,
+    or a new room of the type with a door or opening to the anchor."""
     links = final.floors[0].links
     if expect["edit"] == "link":
-        return any(
-            {link.a, link.b} == {expect["a"], expect["b"]} and link.kind.value == expect["link"]
-            for link in links
+        changed = _pair(expect["a"], expect["b"])
+        made = any(
+            _pair(link.a, link.b) == changed and link.kind.value == expect["link"] for link in links
         )
+        return made and _kept(start, final, changed)
     before = {room.id for room in start.rooms()}
     new = [room for room in final.rooms() if room.id not in before and room.type == expect["type"]]
-    return any({link.a, link.b} == {room.id, expect["near"]} for room in new for link in links)
+    passage = any(
+        _pair(link.a, link.b) == _pair(room.id, expect["near"]) and link.kind != LinkKind.WALL
+        for room in new
+        for link in links
+    )
+    return passage and _kept(start, final, None)
 
 
 def score_behavior(row: PromptRow, output: dict[str, Any]) -> dict[str, Any]:
