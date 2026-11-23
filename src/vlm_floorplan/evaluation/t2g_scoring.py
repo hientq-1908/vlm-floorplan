@@ -92,14 +92,20 @@ def _requirement_scores(scored: Sequence[dict[str, Any]], key: str) -> dict[str,
     }
 
 
-_EDIT_FLAGS = ("edit_tools_only", "edit_effect_ok")
-_QUESTION_FLAGS = ("asked_question", "names_issue")
+_FLAGS = {
+    "edit": ("edit_tools_only", "edit_effect_ok"),
+    "restart": (),
+    "contradiction": ("asked_question", "names_issue"),
+    "unsupported": ("asked_question", "names_issue"),
+}
 
 
 def _behavior_scores(scored: Sequence[dict[str, Any]]) -> dict[str, Any]:
     groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    behaviors = {}
     for row in scored:
         groups[row["kind"]].append(row)
+        behaviors[row["kind"]] = row["behavior"]
     result = {}
     for kind, rows in sorted(groups.items()):
         n = len(rows)
@@ -108,9 +114,9 @@ def _behavior_scores(scored: Sequence[dict[str, Any]]) -> dict[str, Any]:
             "correct_rate": ratio(sum(bool(r["correct"]) for r in rows), n),
             "new_plan_rate": ratio(sum(r["called_new_plan"] for r in rows), n),
             "no_tool_call_rate": ratio(sum(r["no_tool_call"] for r in rows), n),
+            "call_cap_rate": ratio(sum(r["hit_call_cap"] for r in rows), n),
         }
-        flags = _EDIT_FLAGS if kind.startswith("edit") else _QUESTION_FLAGS
-        for flag in flags:
+        for flag in _FLAGS[behaviors[kind]]:
             entry[f"{flag}_rate"] = ratio(sum(bool(r.get(flag)) for r in rows), n)
         result[kind] = entry
     return result
@@ -119,7 +125,7 @@ def _behavior_scores(scored: Sequence[dict[str, Any]]) -> dict[str, Any]:
 def aggregate_run(scored: Sequence[dict[str, Any]]) -> dict[str, Any]:
     """Dataset-level scores from per-prompt records."""
     draws = [row for row in scored if row["behavior"] in _DRAW]
-    behaviors = [row for row in scored if row["behavior"] not in _DRAW]
+    behaviors = [row for row in scored if row["behavior"] != "draw"]
     n = len(draws)
     strict_plans = [
         PlanPlausibility(**r["plausibility"])
@@ -130,11 +136,16 @@ def aggregate_run(scored: Sequence[dict[str, Any]]) -> dict[str, Any]:
     l4 = [r for r in draws if r["level"] == 4]
     scores = [r["plan_score"] or 0.0 for r in l4]
     got = [r["plan_score"] for r in l4 if r["plan_score"] is not None]
-    summary: dict[str, Any] = {"n_prompts": len(scored), "n_draw_prompts": n}
+    summary: dict[str, Any] = {
+        "n_prompts": len(scored),
+        "n_draw_prompts": n,
+        "call_cap_rate": ratio(sum(r["hit_call_cap"] for r in scored), len(scored)),
+    }
     if draws:
         summary |= {
             "tool_call_rate": ratio(sum(r["called_new_plan"] for r in draws), n),
             "validity_rate": ratio(sum(r["strict_valid"] for r in draws), n),
+            "strict_plan_rate": ratio(sum(r["strict_plan"] for r in draws), n),
             "lenient_plan_rate": ratio(sum(r["lenient_found"] for r in draws), n),
             "invalid_reasons": dict(
                 Counter(r["reject_reason"] for r in draws if r["reject_reason"])
@@ -160,20 +171,22 @@ def score_run(run_dir: Path, rows: list[PromptRow], sets_dir: Path | None = None
 
     The references and reference tables are read from `sets_dir`, by default the directory of
     the prompts file in `config.json`. A rescore of a collected run passes the directory it
-    actually has. Missing references for prompts that name a record raise `FileNotFoundError`,
-    so a rescore never silently writes degraded metrics.
+    actually has. A missing `reference_tables.json`, or a record id of a prompt that is not in
+    `references.jsonl`, raises `FileNotFoundError`, so a rescore never silently writes
+    degraded metrics.
     """
     config = json.loads((run_dir / "config.json").read_text())
     directory = sets_dir or Path(config["prompts"]).parent
-    references = read_references(directory)
-    if any(row.record_id for row in rows) and not references:
-        raise FileNotFoundError(f"no {REFERENCES_FILE} with plans in {directory}")
     tables_path = directory / TABLES_FILE
-    tables = (
-        ReferenceTables.model_validate_json(tables_path.read_text())
-        if tables_path.exists()
-        else ReferenceTables()
-    )
+    if not tables_path.exists():
+        raise FileNotFoundError(f"no {TABLES_FILE} in {directory}")
+    tables = ReferenceTables.model_validate_json(tables_path.read_text())
+    references = read_references(directory)
+    missing = sorted({row.record_id for row in rows if row.record_id} - set(references))
+    if missing:
+        raise FileNotFoundError(
+            f"{len(missing)} record ids are not in {directory / REFERENCES_FILE}, e.g. {missing[0]}"
+        )
     latest = {row["prompt_id"]: row for row in read_jsonl(run_dir / "outputs.jsonl")}
     by_id = {row.id: row for row in rows}
     outputs = {pid: out for pid, out in latest.items() if pid in by_id}
@@ -181,13 +194,11 @@ def score_run(run_dir: Path, rows: list[PromptRow], sets_dir: Path | None = None
         score_row(by_id[pid], out, references.get(by_id[pid].record_id or ""), tables)
         for pid, out in outputs.items()
     ]
+    record_ids = sorted({r.record_id for r in rows if r.record_id})
     real = {
-        "n_plans": len({r.record_id for r in rows if r.record_id in references}),
+        "n_plans": len(record_ids),
         "plausibility": aggregate_plausibility(
-            [
-                plan_plausibility(references[rid].graph, tables)
-                for rid in sorted({r.record_id for r in rows if r.record_id in references})
-            ]
+            [plan_plausibility(references[rid].graph, tables) for rid in record_ids]
         ),
     }
     summary = aggregate_run(scored) | {
@@ -204,15 +215,27 @@ def score_run(run_dir: Path, rows: list[PromptRow], sets_dir: Path | None = None
 
 
 def _token_stats(outputs: list[dict[str, Any]]) -> dict[str, Any]:
+    """Per prompt, summed over the turns of its transcript."""
+    done = [row for row in outputs if row.get("turns")]
+
     def mean(key: str) -> float | None:
-        values = [row[key] for row in outputs if row.get(key) is not None]
+        values = [
+            sum(turn[key] for turn in row["turns"])
+            for row in done
+            if all(turn.get(key) is not None for turn in row["turns"])
+        ]
         return round(sum(values) / len(values), 2) if values else None
 
     return {
+        "mean_turns": round(sum(len(r["turns"]) for r in done) / len(done), 2) if done else None,
         "mean_prompt_tokens": mean("prompt_tokens"),
         "mean_completion_tokens": mean("completion_tokens"),
         "mean_latency_s": mean("latency_s"),
-        "finish_reasons": dict(Counter(row.get("finish_reason") for row in outputs)),
+        "finish_reasons": dict(
+            Counter(
+                row["turns"][-1]["finish_reason"] if row.get("turns") else None for row in outputs
+            )
+        ),
     }
 
 

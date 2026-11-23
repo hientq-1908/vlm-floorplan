@@ -2,8 +2,8 @@
 
 - edit: a plan exists and the user asks for one change ("put a door between ..."); the right
   response is edit tools that make the change, never `new_plan`.
-- restart: a plan exists and the user says to start over; the right response is a `new_plan`
-  that meets the new request.
+- restart: a plan exists and the user says to start over, asking for what another plan has
+  and the current plan lacks; the right response is a `new_plan` that meets the new request.
 - contradiction: "a one-bedroom flat with three bedrooms"; no call, one question naming the
   conflict.
 - unsupported: a request plus square metres, a compass direction and the like; no call, one
@@ -19,7 +19,7 @@ import random
 from collections import Counter
 from collections.abc import Callable, Collection
 
-from vlm_floorplan.requirements import derive_requirements, requirements_to_json
+from vlm_floorplan.requirements import all_met, derive_requirements, requirements_to_json
 from vlm_floorplan.schema import FloorplanGraph, LinkKind, Room, RoomType
 from vlm_floorplan.text2graph.leak import normalize_text
 from vlm_floorplan.text2graph.rows import PromptRow, empty_start
@@ -28,6 +28,7 @@ from vlm_floorplan.text2graph.words import NOUNS, NUMBER_WORDS
 
 BEHAVIOR_QUOTAS = {"edit": 40, "restart": 15, "contradiction": 20, "unsupported": 25}
 EDIT_KINDS = ("door", "open", "add")
+RESTART_TRIES = 10
 _OPENABLE = {RoomType.LIVING, RoomType.KITCHEN, RoomType.DINING, RoomType.ENTRY}
 _ADDABLE = (RoomType.STORAGE, RoomType.UTILITY, RoomType.TERRACE, RoomType.DINING)
 _ANCHORS = (RoomType.LIVING, RoomType.ENTRY, RoomType.BEDROOM, RoomType.KITCHEN)
@@ -129,16 +130,27 @@ def edit_row(
 
 def restart_row(
     index: int,
-    record_id: str,
-    source: str,
     graph: FloorplanGraph,
-    other: FloorplanGraph,
+    other: tuple[str, str, FloorplanGraph],
     rng: random.Random,
-) -> PromptRow:
-    """ "Start over" on `graph`, asking for what `other` has, so the old plan cannot satisfy it."""
-    reqs = derive_requirements(other, 2, rng, source)
+) -> PromptRow | None:
+    """ "Start over" on `graph`, asking for what the plan `other` has.
+
+    The row names `other` as its record, the plan that meets the request. Requirements are
+    drawn until `graph` fails at least one of them, so keeping the old plan is never right;
+    None when `other` is `graph` or no draw does that.
+    """
+    record_id, source, target = other
+    if target == graph:
+        return None
+    for _ in range(RESTART_TRIES):
+        reqs = derive_requirements(target, 2, rng, source)
+        if not all_met(graph, reqs):
+            break
+    else:
+        return None
     kind = choose_kind(2, reqs, rng)
-    request = render_text(other, reqs, kind, source, rng)
+    request = render_text(target, reqs, kind, source, rng)
     return PromptRow(
         **_row(index, "restart", "restart", f"{rng.choice(_RESTARTS)} {request}"),
         source=source,
@@ -241,17 +253,15 @@ def build_behavior_rows(
         else:
             raise ValueError(f"no plan in the pool can take an edit of kind {kind}")
 
-    def fresh(make: Callable[[str, str, FloorplanGraph], PromptRow]) -> PromptRow:
+    def fresh(make: Callable[[str, str, FloorplanGraph], PromptRow | None]) -> PromptRow:
         for _attempt in range(50):
             row = make(*next_plan())
-            if normalize_text(row.text) not in forbidden:
+            if row and normalize_text(row.text) not in forbidden:
                 return row
-        raise ValueError("every drawn behavior prompt equals a train prompt")
+        raise ValueError("no drawn behavior prompt is usable and differs from every train prompt")
 
     for _ in range(quotas["restart"]):
-        rows.append(
-            fresh(lambda i, s, g: restart_row(len(rows), i, s, g, rng.choice(plans)[2], rng))
-        )
+        rows.append(fresh(lambda _i, _s, g: restart_row(len(rows), g, rng.choice(plans), rng)))
     for _ in range(quotas["contradiction"]):
         rows.append(fresh(lambda i, s, g: contradiction_row(len(rows), i, s, g, rng)))
     for _ in range(quotas["unsupported"]):

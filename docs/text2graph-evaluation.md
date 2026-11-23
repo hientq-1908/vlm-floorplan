@@ -1,13 +1,13 @@
 # Text-to-graph evaluation
 
-This page explains how a model is measured on the first fine-tune's task: a description of an apartment in, one `new_plan` call out.
+This page explains how a model is measured on the first fine-tune's task: a description of an apartment in, one `new_plan` call out, then a short reply.
 The same harness scores the base model and a fine-tuned one, so "with and without fine-tuning" is one comparison.
 Code: `src/vlm_floorplan/requirements/`, `src/vlm_floorplan/text2graph/`, and the `t2g_*` and `plausibility` modules of `src/vlm_floorplan/evaluation/`.
 The image-to-graph evaluation is in [evaluation.md](evaluation.md) and is unchanged.
 
 ## What the model reads and writes
 
-The harness sends exactly what training uses: `agent.episode.SYSTEM_PROMPT`, the twelve tools of `agent_tool_schemas()`, and one user turn.
+The harness sends exactly what training uses: `agent.episode.SYSTEM_PROMPT`, the twelve tools of `agent_tool_schemas()`, and one user turn (`agent.env.user_message`, the same function that builds the training user turn).
 
 ```text
 Current plan:
@@ -18,7 +18,11 @@ Request: We're looking for a place with three bedrooms, at least two bathrooms .
 ```
 
 Thinking is on, with the sampling defaults of the model card (temperature 0.6, top-p 0.95, top-k 20), and `max_tokens` is 8192.
-One request is one completion: the reply to the tool response is not sampled, so reply faithfulness is not measured yet (see follow-ups).
+One request is the agent loop the model is trained on.
+Every structured tool call in a reply runs in the real environment (`agent.tools.call_tool`) on the running plan, the assistant turn and one tool message per call with the real response are appended, and the conversation is sent again, until the model replies without a tool call.
+The loop stops at 8 tool calls (`max_tool_calls`); a prompt that reaches it is flagged `hit_call_cap`, counted in `call_cap_rate`, and is not a clean finish: it has no strict plan and no behavior of it is correct.
+`outputs.jsonl` keeps the whole transcript per prompt: the first reply's fields at the top level, `turns` (content, reasoning, tool calls, finish reason, token counts and tool responses of every turn), `calls` (the ordered call sequence), `final_content` (the last reply) and `final_graph`.
+The final reply is sampled, so reply faithfulness can be scored from it, but it is not scored yet (see follow-ups).
 
 ## Held-out sets
 
@@ -39,7 +43,7 @@ Without it the paraphrased set stays empty.
 | `template_test.jsonl` | 600 | Exact template prompts from test-split plans: 200 ResPlan, 250 Swiss Dwellings, 150 CubiCasa5K. Levels L0 to L4 in a 5 / 20 / 30 / 30 / 15 % mix. |
 | `template_val.jsonl` | 600 | The same recipe on val-split plans, for choosing a checkpoint only. |
 | `paraphrase_test.jsonl` | 200 | Template test prompts (L0 to L3) rewritten by DeepSeek, each passing both paraphrase checks. |
-| `behavior_test.jsonl` | 100 | 40 edits (not `new_plan`), 15 restarts, 20 contradictions, 25 unsupported asks. |
+| `behavior_test.jsonl` | 100 | 40 edits (not `new_plan`), 15 restarts (asking for what the current plan lacks), 20 contradictions, 25 unsupported asks. |
 | `handwritten_test.jsonl` | 0 | An empty slot for the captain's 60 prompts (below). |
 | `references.jsonl` | | The canonical source plan of every record id, with polygons. |
 | `reference_tables.json` | | Real link shares and room-count bands from the train plans, for two plausibility metrics. |
@@ -86,7 +90,7 @@ A prompt whose paraphrase fails three tries is skipped and the next one is tried
 
 The captain writes 60 prompts (free descriptions and requirement lists, about an hour).
 Put them in `handwritten_test.jsonl`, one `PromptRow` per line (`text/rows.py`): `text_source` is `handwritten`, `source` is `handwritten`, `start` is a plan with no rooms and an exterior wall (copy one from a template prompt), and `requirements` are extracted by `Teacher.extract` and confirmed by hand.
-The harness accepts the file as it does the others, and the job skips it while it is empty.
+The harness accepts the file as it does the others; the job runs it only when `handwritten_test` is named in `--prompt-sets`, and skips it while it is empty.
 
 ## Requirements
 
@@ -112,18 +116,21 @@ Choices that matter when reading a result:
 - An entrance count is the number of rooms with an exterior door.
 - Reachability walks over door and opening links from the entrance rooms.
 
-`derive_requirements(graph, level, rng)` draws a set the plan meets by construction (a test checks this on every level), so the source plan always meets its own prompt.
+`derive_requirements(graph, level, rng)` draws a set the plan meets by construction (a test checks this on every level).
+`references.jsonl` keeps the source plans unlabeled, so a source plan meets its own prompt once `apply_labels` puts the label of a `HasLabel` requirement on it.
 
 ## Metrics
 
 Every metric is a count first and a ratio last, and a ratio with an empty denominator is `null`.
-`metrics.json` holds two readings of each requirement metric: `strict` counts only plans from an accepted structured `new_plan` call, and `lenient` also counts a plan found in the reasoning or the answer text by the perception baseline's parser.
+`metrics.json` holds two readings of each requirement metric: `strict` scores the plan the environment holds after the loop, counted only when an accepted structured `new_plan` call made it, and `lenient` also counts a plan found in the first reply's reasoning or answer text by the perception baseline's parser.
 The gap between them is how often the model follows the format.
 
 | Group | Metric | Definition |
 |-------|--------|------------|
-| Format | `tool_call_rate` | Share of replies with a structured `new_plan` call. |
-| | `validity_rate` | Share whose call the environment accepts. Refusals are counted by reason in `invalid_reasons`. |
+| Format | `tool_call_rate` | Share of transcripts with a structured `new_plan` call. |
+| | `validity_rate` | Share whose first `new_plan` call the environment accepts. Refusals are counted by reason in `invalid_reasons`. |
+| | `strict_plan_rate` | Share that end with a plan from an accepted `new_plan`, a retry after a refusal included, and did not reach the call cap. |
+| | `call_cap_rate` | Share of prompts that reached the 8-call cap, overall and per behavior kind. |
 | Requirements | `requirement_satisfaction` | Met over stated requirements, micro-averaged; a reply with no plan meets none. By level and by requirement type. |
 | | `all_met_rate` | Share of prompts with every requirement met. The headline. By level, source and input kind. |
 | | `l4_plan_score_*` | `plan_score` against the source plan, for L4 prompts only. |
@@ -134,7 +141,7 @@ The gap between them is how often the model follows the format.
 | | `rare_link_rate` | Links whose (type pair, kind) is under 0.5 % of real train links. |
 | | `room_count_in_band_rate` | Total rooms within the real 5th to 95th percentile for the plan's bedroom count. |
 | | `indoor_inside_wall_rate` | Indoor rooms whose point is inside the exterior wall. |
-| Behavior | `correct_rate` per kind | Edits: edit tools only, and the link or room asked for exists. Questions: no tool call, a question, and every conflicting term (contradiction) or any unsupported term (unsupported) named. |
+| Behavior | `correct_rate` per kind | Edits: edit tools only, and the final plan has the link asked for, or a new room of the type linked to the anchor. Restarts: an accepted `new_plan` whose final plan meets every requirement. Questions, read from the first reply: no tool call, a question, and every conflicting term (contradiction) or any unsupported term (unsupported) named. |
 
 Plausibility is computed on strict plans, and `plausibility_incl_lenient` adds the lenient ones.
 `real_reference` is the same plausibility computed on the source plans of the prompts: the band a generated plan should fall in.
@@ -187,7 +194,7 @@ They will be set with the captain after the zero-shot baseline numbers exist.
 ## Not measured yet
 
 - Diversity (distinct structures, layout spread, copy rate) needs 8 samples per prompt.
-- Reply faithfulness needs the second request that follows the tool response.
+- Reply faithfulness: the final reply is in the transcript but not scored.
 - Multi-turn refinement is stage 2.
 - General-retention benchmarks.
 - The 60 hand-written prompts.

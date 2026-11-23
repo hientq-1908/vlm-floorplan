@@ -1,17 +1,19 @@
 import json
+import re
 from pathlib import Path
 
 import pytest
 from t2g_fixtures import make_record, write_split
 
+from vlm_floorplan.agent.env import user_message
 from vlm_floorplan.agent.tools import NEW_PLAN, agent_tool_schemas, call_tool
 from vlm_floorplan.compact import to_compact
-from vlm_floorplan.evaluation.client import ChatResponse, parse_chat_response
+from vlm_floorplan.evaluation.client import ApiError, ChatResponse, parse_chat_response
 from vlm_floorplan.evaluation.t2g_harness import T2gConfig, build_request, collect_outputs
-from vlm_floorplan.evaluation.t2g_prompt import example_plan, system_prompt, user_message
+from vlm_floorplan.evaluation.t2g_prompt import example_plan, system_prompt
 from vlm_floorplan.evaluation.t2g_score_one import reject_reason
 from vlm_floorplan.evaluation.t2g_scoring import score_run
-from vlm_floorplan.requirements import apply_labels
+from vlm_floorplan.requirements import all_met, apply_labels
 from vlm_floorplan.text2graph.build import BuildConfig, build_sets
 from vlm_floorplan.text2graph.pools import SourceFiles
 from vlm_floorplan.text2graph.rows import read_references, read_rows
@@ -40,8 +42,16 @@ def sets(tmp_path_factory) -> Path:
     return out
 
 
+def reply(content="", calls=(), finish="stop"):
+    calls = [
+        {"id": f"c{i}", "name": name, "arguments": json.dumps(args)}
+        for i, (name, args) in enumerate(calls)
+    ]
+    return ChatResponse(content, "", "tool_calls" if calls else finish, 1, 1, 0.0, tool_calls=calls)
+
+
 class GoldClient:
-    """Answers each draw prompt with the source plan, and each behavior prompt correctly."""
+    """Answers each prompt correctly, one tool call per turn, reading the conversation so far."""
 
     def __init__(self, rows, references, mode="gold"):
         self.rows, self.references, self.mode = rows, references, mode
@@ -49,10 +59,12 @@ class GoldClient:
 
     def complete(self, request):
         self.requests.append(request)
-        user = request["messages"][-1]["content"]
+        messages = request["messages"]
+        user = messages[1]["content"]
         row = next(r for r in self.rows if user.endswith(r.text))
+        made = [m["tool_calls"][0]["function"]["name"] for m in messages if m.get("tool_calls")]
         if self.mode == "silent":
-            return ChatResponse("I cannot help.", "", "stop", 1, 1, 0.0)
+            return reply("I cannot help.")
         if self.mode == "xml":
             graph = apply_labels(self.references[row.record_id].graph, row.parsed_requirements())
             xml = f"<tool_call><function=new_plan><parameter=plan>{to_compact(graph)}</parameter>"
@@ -61,29 +73,40 @@ class GoldClient:
             plan = json.dumps(
                 {"rooms": [{"id": "r0", "type": "living", "xy": [5, 5]}], "links": []}
             )
-            call = {"name": "new_plan", "arguments": json.dumps({"plan": plan})}
-            return ChatResponse("", "", "tool_calls", 1, 1, 0.0, tool_calls=[call])
+            return reply(calls=[] if made else [(NEW_PLAN, {"plan": plan})])
+        if made and (row.behavior != "edit" or row.expect["edit"] == "link" or len(made) == 2):
+            return reply("Done.")
+        if row.behavior == "restart" and self.mode == "keep":
+            return reply(calls=[(NEW_PLAN, {"plan": to_compact(row.start_graph())})])
         if row.behavior in ("draw", "restart"):
             graph = apply_labels(self.references[row.record_id].graph, row.parsed_requirements())
-            call = {"name": "new_plan", "arguments": json.dumps({"plan": to_compact(graph)})}
-            return ChatResponse("", "", "tool_calls", 1, 1, 0.0, tool_calls=[call])
+            return reply(calls=[(NEW_PLAN, {"plan": to_compact(graph)})])
         if row.behavior == "edit":
             e = row.expect
             if e["edit"] == "link":
                 args = {"room_a": e["a"], "room_b": e["b"], "kind": e["link"]}
-                call = {"name": "set_link_kind", "arguments": json.dumps(args)}
-            else:
-                new_id = f"r{len(row.start['floors'][0]['rooms'])}"
+                return reply(calls=[("set_link_kind", args)])
+            if not made:
                 new = {"type": e["type"], "x": 500, "y": 500, "size": 40}
-                link = {"room_a": new_id, "room_b": e["near"], "kind": "wall"}
-                calls = [
-                    {"name": "add_room", "arguments": json.dumps(new)},
-                    {"name": "add_link", "arguments": json.dumps(link)},
-                ]
-                return ChatResponse("", "", "tool_calls", 1, 1, 0.0, tool_calls=calls)
-            return ChatResponse("", "", "tool_calls", 1, 1, 0.0, tool_calls=[call])
+                return reply(calls=[("add_room", new)])
+            added = re.search(r"room (r\d+)", messages[-1]["content"])[1]
+            link = {"room_a": added, "room_b": e["near"], "kind": "wall"}
+            return reply(calls=[("add_link", link)])
         words = [group[0] for group in row.expect["groups"]]
-        return ChatResponse(f"Do you mean {words[0]} or {words[-1]}?", "", "stop", 1, 1, 0.0)
+        return reply(f"Do you mean {words[0]} or {words[-1]}?")
+
+
+class LoopingClient:
+    """Calls a harmless edit forever, or fails on a chosen request."""
+
+    def __init__(self, fail_on=None):
+        self.requests, self.fail_on = [], fail_on
+
+    def complete(self, request):
+        self.requests.append(request)
+        if self.fail_on is not None and len(self.requests) == self.fail_on:
+            raise ApiError("server restarting")
+        return reply(calls=[("set_link_kind", {"room_a": "r0", "room_b": "r1", "kind": "door"})])
 
 
 def run(sets, name, mode, tmp_path, limit=None):
@@ -158,25 +181,87 @@ def test_behavior_prompts_are_scored_by_what_the_model_did(sets, tmp_path):
     assert behavior["contradiction"]["correct_rate"] == 1.0
     assert behavior["unsupported"]["correct_rate"] == 1.0
     assert behavior["edit_door"]["edit_effect_ok_rate"] == 1.0
-    assert behavior["edit_add"]["edit_effect_ok_rate"] == 1.0
+    assert behavior["edit_add"]["correct_rate"] == 1.0
+    assert behavior["restart"]["correct_rate"] == 1.0
     assert summary["strict"]["all_met_prompts"] >= 1  # the restart prompts are scored as draws
     silent, _, _ = run(sets, "behavior_test", "silent", tmp_path)
     assert silent["behavior"]["edit_door"]["correct_rate"] == 0.0
     assert silent["behavior"]["contradiction"]["correct_rate"] == 0.0
 
 
-def test_a_run_resumes_and_skips_answered_prompts(sets, tmp_path):
+def test_a_run_resumes_and_skips_prompts_with_a_complete_transcript(sets, tmp_path):
     _, run_dir, client = run(sets, "template_test", "gold", tmp_path, limit=5)
-    assert len(client.requests) == 5
+    assert len(client.requests) == 10  # new_plan, then the plain reply
     rows = read_rows(sets / "template_test.jsonl")
     config = T2gConfig(
         run_name="gold", prompts=str(sets / "template_test.jsonl"), model="m", limit=8
     )
     again = GoldClient(rows, read_references(sets))
     collect_outputs(config, again, run_dir)
-    assert len(again.requests) == 3
+    assert len(again.requests) == 6
     with pytest.raises(ValueError):
         collect_outputs(config.model_copy(update={"temperature": 0.1}), again, run_dir)
+
+
+def test_a_failure_inside_the_loop_is_retried_from_the_start(sets, tmp_path):
+    rows = read_rows(sets / "behavior_test.jsonl")
+    row = next(r for r in rows if r.kind == "edit_door")
+    prompts = tmp_path / "one.jsonl"
+    prompts.write_text(row.model_dump_json() + "\n")
+    config = T2gConfig(run_name="r", prompts=str(prompts), model="m", max_tool_calls=3)
+    run_dir = tmp_path / "run"
+    collect_outputs(config, LoopingClient(fail_on=2), run_dir)
+    first = [json.loads(line) for line in (run_dir / "outputs.jsonl").read_text().splitlines()]
+    assert first == [{"prompt_id": row.id, "api_error": "server restarting"}]
+    again = LoopingClient()
+    collect_outputs(config, again, run_dir)
+    assert len(again.requests) == 3
+    collect_outputs(config, LoopingClient(), run_dir)
+    lines = (run_dir / "outputs.jsonl").read_text().splitlines()
+    assert len(lines) == 2 and json.loads(lines[-1])["hit_call_cap"]
+
+
+def test_the_loop_runs_each_call_and_sends_back_the_real_tool_response(sets, tmp_path):
+    summary, run_dir, client = run(sets, "behavior_test", "gold", tmp_path)
+    rows = {r.id: r for r in read_rows(sets / "behavior_test.jsonl")}
+    outputs = [json.loads(line) for line in (run_dir / "outputs.jsonl").read_text().splitlines()]
+    add = next(o for o in outputs if rows[o["prompt_id"]].kind == "edit_add")
+    assert [c["name"] for c in add["calls"]] == ["add_room", "add_link"]
+    assert [len(t["tool_calls"]) for t in add["turns"]] == [1, 1, 0]
+    assert add["final_content"] == "Done." and not add["hit_call_cap"]
+    row = rows[add["prompt_id"]]
+    expected = call_tool(row.start_graph(), "add_room", json.loads(add["calls"][0]["arguments"]))
+    last = next(
+        r for r in reversed(client.requests) if r["messages"][1]["content"].endswith(row.text)
+    )
+    tool_messages = [m for m in last["messages"] if m["role"] == "tool"]
+    assert tool_messages[0]["content"] == expected.text
+    assert tool_messages[0]["content"].startswith("OK: added")
+    assert tool_messages[1]["content"].startswith("OK: linked")
+    assistant = [m for m in last["messages"] if m["role"] == "assistant"]
+    assert [m["tool_calls"][0]["id"] for m in assistant] == [
+        m["tool_call_id"] for m in tool_messages
+    ]
+    assert summary["call_cap_rate"] == 0.0
+
+
+def test_a_transcript_that_reaches_the_call_cap_is_a_failure(sets, tmp_path):
+    rows = [r for r in read_rows(sets / "behavior_test.jsonl") if r.kind == "edit_door"][:2]
+    prompts = tmp_path / "doors.jsonl"
+    prompts.write_text("".join(r.model_dump_json() + "\n" for r in rows))
+    for name in ("references.jsonl", "reference_tables.json"):
+        (tmp_path / name).write_text((sets / name).read_text())
+    config = T2gConfig(run_name="r", prompts=str(prompts), model="m")
+    run_dir = tmp_path / "run"
+    client = LoopingClient()
+    collect_outputs(config, client, run_dir)
+    assert len(client.requests) == 2 * 8
+    outputs = [json.loads(line) for line in (run_dir / "outputs.jsonl").read_text().splitlines()]
+    assert all(len(o["calls"]) == 8 and o["hit_call_cap"] for o in outputs)
+    summary = score_run(run_dir, rows)
+    assert summary["call_cap_rate"] == 1.0
+    assert summary["behavior"]["edit_door"]["call_cap_rate"] == 1.0
+    assert summary["behavior"]["edit_door"]["correct_rate"] == 0.0
 
 
 def test_the_http_client_keeps_structured_tool_calls():
@@ -186,7 +271,10 @@ def test_the_http_client_keeps_structured_tool_calls():
                 "message": {
                     "content": None,
                     "tool_calls": [
-                        {"function": {"name": "new_plan", "arguments": '{"plan": "{}"}'}}
+                        {
+                            "id": "c7",
+                            "function": {"name": "new_plan", "arguments": '{"plan": "{}"}'},
+                        }
                     ],
                 },
                 "finish_reason": "tool_calls",
@@ -194,7 +282,7 @@ def test_the_http_client_keeps_structured_tool_calls():
         ]
     }
     reply = parse_chat_response(body, 0.1)
-    assert reply.tool_calls == [{"name": "new_plan", "arguments": '{"plan": "{}"}'}]
+    assert reply.tool_calls == [{"id": "c7", "name": "new_plan", "arguments": '{"plan": "{}"}'}]
     assert parse_chat_response({"choices": [{"message": {"content": "hi"}}]}, 0).tool_calls == []
 
 
@@ -235,6 +323,30 @@ def test_rescoring_without_references_fails_loudly(sets, tmp_path):
     with pytest.raises(FileNotFoundError):
         score_run(run_dir, rows, tmp_path / "elsewhere")
     assert score_run(run_dir, rows, sets)["real_reference"]["n_plans"] == 3
+    partial = tmp_path / "partial"
+    partial.mkdir()
+    (partial / "reference_tables.json").write_text((sets / "reference_tables.json").read_text())
+    with pytest.raises(FileNotFoundError):
+        score_run(run_dir, rows, partial)
+    lines = (sets / "references.jsonl").read_text().splitlines()
+    kept = [line for line in lines if json.loads(line)["id"] != rows[0].record_id]
+    (partial / "references.jsonl").write_text("".join(line + "\n" for line in kept))
+    with pytest.raises(FileNotFoundError):
+        score_run(run_dir, rows, partial)
+    only_refs = tmp_path / "only_refs"
+    only_refs.mkdir()
+    (only_refs / "references.jsonl").write_text((sets / "references.jsonl").read_text())
+    with pytest.raises(FileNotFoundError):
+        score_run(run_dir, rows, only_refs)
+
+
+def test_a_restart_asks_for_what_the_current_plan_lacks(sets, tmp_path):
+    restarts = [r for r in read_rows(sets / "behavior_test.jsonl") if r.behavior == "restart"]
+    assert restarts
+    for row in restarts:
+        assert not all_met(row.start_graph(), row.parsed_requirements()), row.id
+    kept, _, _ = run(sets, "behavior_test", "keep", tmp_path)
+    assert kept["behavior"]["restart"]["correct_rate"] == 0.0
 
 
 def test_flag_rates_survive_a_failed_first_row(sets, tmp_path):

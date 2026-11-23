@@ -38,7 +38,7 @@ class ChatResponse:
     latency_s: float
     extra: dict[str, Any] = field(default_factory=dict)
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
-    """Structured tool calls as {"name": ..., "arguments": <JSON text>}, in the order made."""
+    """Structured tool calls as {"id": ..., "name": ..., "arguments": <JSON text>}, in order."""
 
 
 class ChatClient(Protocol):
@@ -55,6 +55,7 @@ def parse_chat_response(body: dict[str, Any], latency_s: float) -> ChatResponse:
     usage = body.get("usage") or {}
     tool_calls = [
         {
+            "id": call.get("id"),
             "name": (call.get("function") or {}).get("name"),
             "arguments": (call.get("function") or {}).get("arguments"),
         }

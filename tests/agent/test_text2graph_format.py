@@ -17,6 +17,7 @@ from typing import Any
 import pytest
 
 from vlm_floorplan.agent import agent_tool_schemas, call_tool
+from vlm_floorplan.agent.env import user_message
 from vlm_floorplan.agent.episode import SYSTEM_PROMPT
 from vlm_floorplan.edits import summarize_graph
 from vlm_floorplan.schema import Floor, FloorplanGraph, ImageSize, Link, Room
@@ -74,6 +75,15 @@ def test_the_plan_text_in_the_user_message_is_what_the_summary_writes(
 ) -> None:
     state = current_plan(record["messages"][1]["content"])
     assert summarize_graph(parse_plan_state(state)) == state
+
+
+@pytest.mark.parametrize("record", RECORDS, ids=[r["id"] for r in RECORDS])
+def test_the_user_turn_the_harness_and_training_build_is_the_agreed_one(
+    record: dict[str, Any],
+) -> None:
+    content = record["messages"][1]["content"]
+    request = content.split("\n\nRequest: ", 1)[1]
+    assert user_message(parse_plan_state(current_plan(content)), request) == content
 
 
 @pytest.mark.parametrize("record", RECORDS, ids=[r["id"] for r in RECORDS])

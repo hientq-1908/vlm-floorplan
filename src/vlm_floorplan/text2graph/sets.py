@@ -18,7 +18,7 @@ from collections import Counter
 from collections.abc import Callable, Collection, Sequence
 from concurrent.futures import ThreadPoolExecutor
 
-from vlm_floorplan.requirements import apply_labels, derive_requirements, requirements_to_json
+from vlm_floorplan.requirements import derive_requirements, requirements_to_json
 from vlm_floorplan.text2graph.leak import normalize_text
 from vlm_floorplan.text2graph.paraphrase import Teacher
 from vlm_floorplan.text2graph.pools import Candidate
@@ -81,7 +81,7 @@ def make_prompt(
                 kind=kind,
                 text=text,
                 requirements=requirements_to_json(reqs),
-                start=empty_start(apply_labels(graph, reqs)),
+                start=empty_start(graph),
             )
     return None
 

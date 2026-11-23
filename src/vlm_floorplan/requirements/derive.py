@@ -3,8 +3,8 @@
 The text-to-graph prompts are generated from a real plan: its facts become requirements
 (`candidate_pool`), a level decides how many and of which kind (`derive_requirements`), and a
 template turns them into words. Because every requirement is a true fact of the source plan,
-the source plan meets its own prompt by construction; `tests/requirements/test_requirements.py`
-checks that on every level.
+the source plan meets its own prompt by construction, once `apply_labels` puts the label of a
+`HasLabel` on it; `tests/requirements/test_requirements.py` checks that on every level.
 
 | Level | Requirements                                                                  |
 |-------|-------------------------------------------------------------------------------|
@@ -269,8 +269,9 @@ def derive_requirements(
 def apply_labels(graph: FloorplanGraph, requirements: Sequence[Requirement]) -> FloorplanGraph:
     """The plan with each `HasLabel` put on its room: the largest room of that type.
 
-    Source plans carry no labels (the canonical frame drops them), so the reference plan of a
-    prompt that names a room gets the user's name here.
+    Source plans carry no labels (the canonical frame drops them) and `references.jsonl` keeps
+    them unlabeled, so this is how the source plan of a prompt that names a room becomes a plan
+    that meets the prompt.
     """
     wanted = [req for req in requirements if isinstance(req, HasLabel)]
     if not wanted:

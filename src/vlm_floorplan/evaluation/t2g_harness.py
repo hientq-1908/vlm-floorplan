@@ -1,15 +1,18 @@
 """Run a model over a text-to-graph prompt set and record everything it says.
 
-Phase 1 sends, for each prompt, the training system prompt, the twelve tools and the user turn
-to an OpenAI-compatible endpoint and appends the raw reply, structured tool calls included, to
-`outputs.jsonl`. Nothing is interpreted here, so a run can be re-scored without calling the
-model again (`t2g_scoring.py`). Base and fine-tuned models run the same way: serve the base
-model with `deploy/vllm/serve.sh`, and a LoRA adapter with `LORA_MODULES=name=/path` (vLLM
-`--enable-lora`), then pass the served name as `--model`.
+Phase 1 runs, for each prompt, the agent loop the model is trained on: the training system
+prompt, the twelve tools and the user turn go to an OpenAI-compatible endpoint; every structured
+tool call in the reply is run in the real environment (`agent.tools.call_tool`) on the running
+plan, the assistant turn and one tool message per call are appended, and the conversation is
+sent again, until the model replies without a tool call or has made `max_tool_calls` calls.
+The whole transcript goes to `outputs.jsonl`; nothing is scored here, so a run can be re-scored
+without calling the model again (`t2g_scoring.py`). Base and fine-tuned models run the same way:
+serve the base model with `deploy/vllm/serve.sh`, and a LoRA adapter with
+`LORA_MODULES=name=/path` (vLLM `--enable-lora`), then pass the served name as `--model`.
 
-Run directory: `config.json`, `system_prompt.txt`, `inputs.jsonl` (the request sent),
+Run directory: `config.json`, `system_prompt.txt`, `inputs.jsonl` (the first request sent),
 `outputs.jsonl`, then `per_prompt.jsonl` and `metrics.json` from scoring and `MANIFEST.json`.
-A run resumes: prompts with a reply are skipped, failed ones retried.
+A run resumes: prompts with a complete transcript are skipped, failed ones retried from the start.
 """
 
 from __future__ import annotations
@@ -21,8 +24,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from vlm_floorplan.agent.tools import agent_tool_schemas
-from vlm_floorplan.evaluation.client import ApiError, ChatClient
+from vlm_floorplan.agent.tools import agent_tool_schemas, call_tool
+from vlm_floorplan.evaluation.client import ApiError, ChatClient, ChatResponse
 from vlm_floorplan.evaluation.harness import FAILURE_KEYS, NON_IDENTITY_FIELDS
 from vlm_floorplan.evaluation.run_dir import append_jsonl, read_jsonl
 from vlm_floorplan.evaluation.t2g_prompt import (
@@ -56,6 +59,8 @@ class T2gConfig(BaseModel):
     concurrency: int = Field(default=8, gt=0)
     limit: int | None = None
     timeout_s: float = 1800.0
+    max_tool_calls: int = Field(default=8, gt=0)
+    """Tool calls allowed per prompt; a transcript that reaches it is flagged `hit_call_cap`."""
     prompt_version: str = PROMPT_VERSION
 
 
@@ -92,13 +97,20 @@ def prepare_run_dir(config: T2gConfig, run_dir: Path) -> None:
     (run_dir / "system_prompt.txt").write_text(system_prompt(config.variant) + "\n")
 
 
-def _call(client: ChatClient, prompt_id: str, request: dict[str, Any]) -> dict[str, Any]:
+def call_arguments(call: dict[str, Any]) -> dict[str, Any] | None:
+    """The arguments of a structured tool call as a dict, or None when not a JSON object."""
+    raw = call.get("arguments")
+    if isinstance(raw, dict):
+        return raw
     try:
-        reply = client.complete(request)
-    except ApiError as err:
-        return {"prompt_id": prompt_id, "api_error": str(err)}
+        data = json.loads(raw or "")
+    except (TypeError, json.JSONDecodeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _turn(reply: ChatResponse) -> dict[str, Any]:
     return {
-        "prompt_id": prompt_id,
         "content": reply.content,
         "reasoning": reply.reasoning,
         "tool_calls": reply.tool_calls,
@@ -106,6 +118,70 @@ def _call(client: ChatClient, prompt_id: str, request: dict[str, Any]) -> dict[s
         "prompt_tokens": reply.prompt_tokens,
         "completion_tokens": reply.completion_tokens,
         "latency_s": round(reply.latency_s, 3),
+        "tool_responses": [],
+    }
+
+
+def _assistant_message(turn: dict[str, Any], ids: list[str]) -> dict[str, Any]:
+    calls = [
+        {
+            "id": call_id,
+            "type": "function",
+            "function": {"name": call.get("name"), "arguments": call.get("arguments")},
+        }
+        for call_id, call in zip(ids, turn["tool_calls"], strict=True)
+    ]
+    return {
+        "role": "assistant",
+        "content": turn["content"],
+        "reasoning_content": turn["reasoning"],
+        "tool_calls": calls,
+    }
+
+
+def run_prompt(
+    config: T2gConfig, client: ChatClient, row: PromptRow, request: dict[str, Any]
+) -> dict[str, Any]:
+    """The agent loop for one prompt; the transcript, or an `api_error` record."""
+    messages = list(request["messages"])
+    graph = row.start_graph()
+    turns: list[dict[str, Any]] = []
+    calls: list[dict[str, Any]] = []
+    while len(calls) < config.max_tool_calls:
+        try:
+            reply = client.complete(request | {"messages": list(messages)})
+        except ApiError as err:
+            return {"prompt_id": row.id, "api_error": str(err)}
+        turn = _turn(reply)
+        turns.append(turn)
+        if not reply.tool_calls:
+            break
+        ids = [
+            call.get("id") or f"call_{len(calls) + i}" for i, call in enumerate(reply.tool_calls)
+        ]
+        messages.append(_assistant_message(turn, ids))
+        for call_id, call in zip(ids, reply.tool_calls, strict=True):
+            if len(calls) == config.max_tool_calls:
+                break
+            name = call.get("name") or ""
+            result = call_tool(graph, name, call_arguments(call) or {})
+            graph = result.graph
+            calls.append(
+                {"name": name, "arguments": call.get("arguments"), "applied": result.applied}
+            )
+            turn["tool_responses"].append(result.text)
+            messages.append(
+                {"role": "tool", "tool_call_id": call_id, "name": name, "content": result.text}
+            )
+    first, last = turns[0], turns[-1]
+    return {
+        "prompt_id": row.id,
+        **{k: v for k, v in first.items() if k != "tool_responses"},
+        "turns": turns,
+        "calls": calls,
+        "hit_call_cap": bool(last["tool_calls"]),
+        "final_content": last["content"],
+        "final_graph": graph.model_dump(mode="json"),
     }
 
 
@@ -125,7 +201,7 @@ def collect_outputs(config: T2gConfig, client: ChatClient, run_dir: Path) -> lis
 
     def work(row: PromptRow) -> tuple[dict[str, Any], dict[str, Any]]:
         request = build_request(config, row)
-        return request, _call(client, row.id, request)
+        return request, run_prompt(config, client, row, request)
 
     with ThreadPoolExecutor(max_workers=config.concurrency) as pool:
         for row, (request, output) in zip(todo, pool.map(work, todo), strict=True):
@@ -138,4 +214,11 @@ def collect_outputs(config: T2gConfig, client: ChatClient, run_dir: Path) -> lis
     return rows
 
 
-__all__ = ["NON_IDENTITY_FIELDS", "T2gConfig", "build_request", "collect_outputs"]
+__all__ = [
+    "NON_IDENTITY_FIELDS",
+    "T2gConfig",
+    "build_request",
+    "call_arguments",
+    "collect_outputs",
+    "run_prompt",
+]

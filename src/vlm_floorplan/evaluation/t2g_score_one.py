@@ -1,20 +1,23 @@
-"""Score one reply of a text-to-graph run: what the model did, and whether it was right.
+"""Score one transcript of a text-to-graph run: what the model did, and whether it was right.
 
-Strict reading: the reply holds a structured `new_plan` tool call and the environment accepts
-it (`call_tool`), exactly what the app would do. Lenient reading: no accepted call, but a plan
-can still be found (XML tool call in the reasoning, bare JSON in the answer) by the same parser
-the perception baseline uses. Both are kept, so "how often does the model follow the format"
-stays visible next to "how good is the plan it meant".
+A transcript is the agent loop of `t2g_harness.py`: every tool call was run in the environment
+and its response fed back. Strict reading of a draw: an accepted structured `new_plan` call in
+the transcript, and the plan the environment holds at the end, exactly what the app would show.
+`tool_call_rate` and `validity_rate` read the first `new_plan` call. Lenient reading: no
+accepted call, but a plan can still be found in the first reply (XML tool call in the
+reasoning, bare JSON in the answer) by the same parser the perception baseline uses. Both are
+kept, so "how often does the model follow the format" stays visible next to "how good is the
+plan it meant". A transcript that reached the call cap is not a clean finish: it has no strict
+plan and no behavior of it is correct.
 """
 
 from __future__ import annotations
 
-import json
 import re
 from typing import Any
 
 from vlm_floorplan.agent.env import plan_score
-from vlm_floorplan.agent.tools import NEW_PLAN, call_tool
+from vlm_floorplan.agent.tools import NEW_PLAN
 from vlm_floorplan.edits.validator import validate_graph
 from vlm_floorplan.evaluation.parser import parse_model_output
 from vlm_floorplan.evaluation.plausibility import ReferenceTables, plan_plausibility
@@ -43,17 +46,6 @@ def reject_reason(response: str) -> str:
     return "other_invalid_plan"
 
 
-def _arguments(call: dict[str, Any]) -> dict[str, Any] | None:
-    raw = call.get("arguments")
-    if isinstance(raw, dict):
-        return raw
-    try:
-        data = json.loads(raw or "")
-    except (TypeError, json.JSONDecodeError):
-        return None
-    return data if isinstance(data, dict) else None
-
-
 def _lenient_graph(output: dict[str, Any], start: FloorplanGraph) -> FloorplanGraph | None:
     result = parse_model_output(output.get("content"), start.image, output.get("reasoning"))
     if result.graph is None:
@@ -64,27 +56,34 @@ def _lenient_graph(output: dict[str, Any], start: FloorplanGraph) -> FloorplanGr
     return graph
 
 
+def _executed(output: dict[str, Any]) -> list[tuple[dict[str, Any], str]]:
+    """Every call the environment ran, in order, with the response the model read."""
+    responses = [text for turn in output.get("turns") or [] for text in turn["tool_responses"]]
+    return list(zip(output.get("calls") or [], responses, strict=True))
+
+
+def _final_graph(output: dict[str, Any]) -> FloorplanGraph:
+    return FloorplanGraph.model_validate(output["final_graph"])
+
+
 def draw_outcome(output: dict[str, Any], start: FloorplanGraph) -> dict[str, Any]:
-    """What the reply drew: the strict graph, else the lenient one, and why strict failed."""
-    calls = output.get("tool_calls") or []
-    plan_calls = [call for call in calls if call.get("name") == NEW_PLAN]
+    """What the transcript drew: the strict graph, else the lenient one, and why strict failed."""
+    executed = _executed(output)
+    plan_calls = [(call, text) for call, text in executed if call["name"] == NEW_PLAN]
+    capped = bool(output.get("hit_call_cap"))
     out: dict[str, Any] = {
-        "tools": [call.get("name") for call in calls],
+        "tools": [call["name"] for call, _ in executed],
         "called_new_plan": bool(plan_calls),
+        "first_plan_valid": bool(plan_calls) and plan_calls[0][0]["applied"],
+        "hit_call_cap": capped,
         "strict_graph": None,
         "lenient_graph": None,
         "reject_reason": None,
     }
-    if plan_calls:
-        arguments = _arguments(plan_calls[0])
-        if arguments is None:
-            out["reject_reason"] = "bad_arguments"
-        else:
-            result = call_tool(start, NEW_PLAN, arguments)
-            if result.applied:
-                out["strict_graph"] = result.graph
-            else:
-                out["reject_reason"] = reject_reason(result.text)
+    if plan_calls and not out["first_plan_valid"]:
+        out["reject_reason"] = reject_reason(plan_calls[0][1])
+    if any(call["applied"] for call, _ in plan_calls) and not capped:
+        out["strict_graph"] = _final_graph(output)
     if out["strict_graph"] is None:
         out["lenient_graph"] = _lenient_graph(output, start)
     return out
@@ -102,25 +101,37 @@ def score_draw(
     reference: PlanRecord | None,
     tables: ReferenceTables,
 ) -> dict[str, Any]:
-    """Score a draw or restart reply against the prompt's requirements."""
+    """Score a draw or restart transcript against the prompt's requirements.
+
+    A restart is correct when an accepted `new_plan` left a plan that meets every requirement.
+    """
     outcome = draw_outcome(output, row.start_graph())
     strict, lenient = outcome["strict_graph"], outcome["lenient_graph"]
     used = strict or lenient
     requirements = row.parsed_requirements()
-    return {
+    met_strict = _met(strict, row)
+    scored = {
         "called_new_plan": outcome["called_new_plan"],
         "tools": outcome["tools"],
-        "strict_valid": strict is not None,
+        "hit_call_cap": outcome["hit_call_cap"],
+        "strict_valid": outcome["first_plan_valid"],
+        "strict_plan": strict is not None,
         "lenient_found": used is not None,
         "reject_reason": outcome["reject_reason"],
         "requirement_kinds": [req.kind for req in requirements],
-        "met_strict": _met(strict, row),
+        "met_strict": met_strict,
         "met_any": _met(used, row),
         "plan_score": plan_score(used, reference) if reference and row.level == 4 else None,
         "plausibility": (plan_plausibility(used, tables).model_dump() if used else None),
         "plausibility_strict": strict is not None,
         "rooms": len(used.rooms()) if used else None,
     }
+    if row.behavior == "restart":
+        scored |= {
+            "correct": bool(met_strict) and all(met_strict),
+            "no_tool_call": not output.get("tool_calls"),
+        }
+    return scored
 
 
 def _has_word(text: str, word: str) -> bool:
@@ -133,40 +144,41 @@ def _mentions(content: str, groups: list[list[str]], need: str) -> bool:
     return all(hits) if need == "all" else any(hits)
 
 
-def _edit_effect(start: FloorplanGraph, calls: list[dict[str, Any]], expect: dict) -> bool:
-    graph = start
-    for call in calls:
-        arguments = _arguments(call)
-        if arguments is not None:
-            graph = call_tool(graph, call.get("name") or "", arguments).graph
-    rooms = {room.id: room for room in graph.rooms()}
-    links = graph.floors[0].links
+def _edit_effect(start: FloorplanGraph, final: FloorplanGraph, expect: dict) -> bool:
+    """The final plan has the link asked for, or a new room of the type linked to the anchor."""
+    links = final.floors[0].links
     if expect["edit"] == "link":
         return any(
             {link.a, link.b} == {expect["a"], expect["b"]} and link.kind.value == expect["link"]
             for link in links
         )
     before = {room.id for room in start.rooms()}
-    new = [room for room in rooms.values() if room.id not in before and room.type == expect["type"]]
+    new = [room for room in final.rooms() if room.id not in before and room.type == expect["type"]]
     return any({link.a, link.b} == {room.id, expect["near"]} for room in new for link in links)
 
 
 def score_behavior(row: PromptRow, output: dict[str, Any]) -> dict[str, Any]:
-    """Score an edit, contradiction or unsupported-ask reply."""
-    calls = output.get("tool_calls") or []
-    names = [call.get("name") for call in calls]
+    """Score an edit transcript, or the first reply to a contradiction or unsupported ask.
+
+    A correct model asks its question in the first reply and stops there, so only that reply
+    is read for the question kinds.
+    """
+    names = [call["name"] for call in output.get("calls") or []]
+    capped = bool(output.get("hit_call_cap"))
     content = (output.get("content") or "").strip()
     result: dict[str, Any] = {
         "tools": names,
         "called_new_plan": NEW_PLAN in names,
-        "no_tool_call": not calls,
+        "no_tool_call": not output.get("tool_calls"),
+        "hit_call_cap": capped,
     }
     if row.behavior == "edit":
-        edited = bool(calls) and NEW_PLAN not in names
-        effect = edited and _edit_effect(row.start_graph(), calls, row.expect)
+        edited = bool(names) and NEW_PLAN not in names
+        effect = edited and not capped
+        effect = effect and _edit_effect(row.start_graph(), _final_graph(output), row.expect)
         result |= {"edit_tools_only": edited, "edit_effect_ok": effect, "correct": effect}
     else:
-        asked = not calls and "?" in content
+        asked = result["no_tool_call"] and "?" in content
         named = asked and _mentions(content, row.expect["groups"], row.expect["need"])
         result |= {"asked_question": asked, "names_issue": named, "correct": named}
     return result
@@ -185,16 +197,16 @@ def score_row(
         "level": row.level,
         "kind": row.kind,
         "behavior": row.behavior,
-        "finish_reason": output.get("finish_reason"),
+        "finish_reason": (output.get("turns") or [output])[-1].get("finish_reason"),
         "api_error": output.get("api_error") or output.get("input_error"),
     }
     if base["api_error"]:
-        scored: dict[str, Any] = {"called_new_plan": False, "tools": [], "failed_call": True}
+        failed = {"failed_call": True, "correct": False, "no_tool_call": False}
         if row.behavior in ("draw", "restart"):
-            scored |= score_draw(row, {}, reference, tables)
+            scored = score_draw(row, {}, reference, tables)
         else:
-            scored |= {"correct": False, "no_tool_call": False}
-        return base | scored | {"api_error": base["api_error"]}
+            scored = {"called_new_plan": False, "tools": [], "hit_call_cap": False}
+        return base | scored | failed
     if row.behavior in ("draw", "restart"):
         return base | score_draw(row, output, reference, tables)
     return base | score_behavior(row, output)

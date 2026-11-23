@@ -33,6 +33,11 @@ REJECTION_PENALTY = 0.05
 """Subtracted from the reward for every refused tool call, so a clean run beats a lucky one."""
 
 
+def user_message(plan: FloorplanGraph, request: str) -> str:
+    """The user turn: the current plan with its exterior wall, a blank line, then the request."""
+    return f"Current plan:\n{summarize_graph(plan)}\n\nRequest: {request}"
+
+
 def plan_score(final: FloorplanGraph | None, target: PlanRecord) -> float:
     """0 to 1: how much of the real plan the final plan has, and nothing else.
 
@@ -103,7 +108,7 @@ class FloorplanEditEnv:
         self._record, self._task = record, task
         self._initial = self._graph = task.corrupt(record.graph)
         self.calls = self.rejected_calls = 0
-        return f"Current plan:\n{summarize_graph(self._initial)}\n\nRequest: {self.request}"
+        return user_message(self._initial, self.request)
 
     @property
     def request(self) -> str:

@@ -7,13 +7,15 @@ a worked example appended to the system prompt, which shows how far prompting al
 
 from __future__ import annotations
 
+from typing import Any
+
+from vlm_floorplan.agent.env import user_message
 from vlm_floorplan.agent.episode import SYSTEM_PROMPT
 from vlm_floorplan.compact import to_compact
-from vlm_floorplan.edits.summary import summarize_graph
 from vlm_floorplan.schema import Floor, FloorplanGraph, ImageSize, Link, Room
 from vlm_floorplan.text2graph.rows import PromptRow
 
-PROMPT_VERSION = "t2g-v1"
+PROMPT_VERSION = "t2g-v2"
 VARIANTS = ("as-is", "one-example")
 EXAMPLE_REQUEST = (
     "A one-bedroom flat with a bathroom and a kitchen open to the living room."
@@ -46,11 +48,6 @@ def example_plan() -> FloorplanGraph:
     )
 
 
-def user_message(start: FloorplanGraph, request: str) -> str:
-    """The user turn of a sample: the current plan with its exterior wall, then the request."""
-    return f"Current plan:\n{summarize_graph(start)}\n\nRequest: {request}"
-
-
 def system_prompt(variant: str) -> str:
     if variant not in VARIANTS:
         raise ValueError(f"variant must be one of {VARIANTS}, got {variant!r}")
@@ -66,7 +63,7 @@ def system_prompt(variant: str) -> str:
     )
 
 
-def build_messages(row: PromptRow, variant: str) -> list[dict[str, str]]:
+def build_messages(row: PromptRow, variant: str) -> list[dict[str, Any]]:
     return [
         {"role": "system", "content": system_prompt(variant)},
         {"role": "user", "content": user_message(row.start_graph(), row.text)},
