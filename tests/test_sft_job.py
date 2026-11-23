@@ -345,6 +345,7 @@ def capture_training(seen: dict[str, Any]) -> Any:
 def test_a_local_full_job_creates_no_clearml_task(
     train_file: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    pytest.importorskip("clearml")
     from clearml import Task
 
     seen: dict[str, Any] = {}

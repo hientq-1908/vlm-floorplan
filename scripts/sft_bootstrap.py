@@ -27,9 +27,21 @@ PYTHON_VERSION = "3.12"
 
 
 def unpack_source(archive: Path, dest: Path) -> Path:
-    """Unpack the source archive into `dest`; refuses absolute paths and `..`."""
+    """Unpack the source archive into `dest`.
+
+    Refuses absolute paths, `..` parts and anything but regular files and directories. The check
+    is done here because `extractall(filter=...)` is missing on some of the agent's old Pythons.
+    """
     with tarfile.open(archive) as tar:
-        tar.extractall(dest, filter="data")
+        members = tar.getmembers()
+        for member in members:
+            parts = Path(member.name).parts
+            if member.name.startswith(("/", "\\")) or ".." in parts:
+                raise tarfile.TarError(f"refusing path outside the destination: {member.name}")
+            if not (member.isfile() or member.isdir()):
+                raise tarfile.TarError(f"refusing non-regular member: {member.name}")
+        extra = {"filter": "data"} if hasattr(tarfile, "data_filter") else {}
+        tar.extractall(dest, members=members, **extra)
     return dest
 
 

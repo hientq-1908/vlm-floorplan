@@ -1,9 +1,10 @@
 """ClearML entry point of the SFT job. Runs on the GPU agent, not locally.
 
-The launcher (`scripts/clearml_sft.py`) creates the task, attaches the training file as an
-artifact and sets the parameters read here. This script only does the ClearML glue: read the
-parameters, unpack the training file, run the job, upload one result archive. The real work is in
-`vlm_floorplan.training.job`.
+The launcher (`scripts/clearml_sft.py`) creates the task, attaches the repository source and the
+training file as artifacts and sets the parameters read here. `scripts/sft_bootstrap.py` unpacks
+the source and runs this script with `uv run` in the synced project environment.
+This script only does the ClearML glue: read the parameters, unpack the training file, run the job,
+upload one result archive. The real work is in `vlm_floorplan.training.job`.
 
 The exit code is non-zero when training failed, so ClearML marks the task failed and the
 collector knows to look at the logs.
@@ -18,19 +19,17 @@ import sys
 import tempfile
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-# The agent clones the repo but does not install it, so make `src/` importable.
-sys.path.insert(0, str(REPO_ROOT / "src"))
+from clearml import Task
 
-from clearml import Task  # noqa: E402
-
-from vlm_floorplan.training.job import (  # noqa: E402
+from vlm_floorplan.training.job import (
     RESULT_ARTIFACT,
     TRAIN_ARTIFACT,
     SftSpec,
     run_job,
     spec_from_parameters,
 )
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def main() -> int:

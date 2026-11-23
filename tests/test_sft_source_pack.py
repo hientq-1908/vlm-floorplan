@@ -141,8 +141,23 @@ def test_bootstrap_unpacks_what_the_launcher_packs(
     assert not (source / "data").exists()
 
 
+@pytest.fixture(params=["with_data_filter", "old_python_without_filter"])
+def tar_filter_support(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    if request.param == "old_python_without_filter":
+        monkeypatch.delattr(tarfile, "data_filter")
+
+
+def test_bootstrap_unpacks_on_old_python_without_the_tar_filter(
+    bootstrap: ModuleType, repo: Path, tmp_path: Path, tar_filter_support: None
+) -> None:
+    archive = tmp_path / "src.tar.gz"
+    pack_repo_source(repo, archive)
+    source = bootstrap.unpack_source(archive, tmp_path / "unpacked")
+    assert (source / "src/vlm_floorplan/training/train.py").read_text() == "x = 1\n"
+
+
 def test_bootstrap_refuses_a_path_that_escapes_the_destination(
-    bootstrap: ModuleType, tmp_path: Path
+    bootstrap: ModuleType, tmp_path: Path, tar_filter_support: None
 ) -> None:
     evil = tmp_path / "evil.tar.gz"
     payload = tmp_path / "payload.txt"
@@ -152,6 +167,20 @@ def test_bootstrap_refuses_a_path_that_escapes_the_destination(
     with pytest.raises(tarfile.TarError):
         bootstrap.unpack_source(evil, tmp_path / "dest")
     assert not (tmp_path / "escaped.txt").exists()
+
+
+def test_bootstrap_refuses_a_link_that_points_outside_the_destination(
+    bootstrap: ModuleType, tmp_path: Path, tar_filter_support: None
+) -> None:
+    evil = tmp_path / "evil.tar.gz"
+    link = tarfile.TarInfo("src/outside")
+    link.type = tarfile.SYMTYPE
+    link.linkname = str(tmp_path)
+    with tarfile.open(evil, "w:gz") as tar:
+        tar.addfile(link)
+    with pytest.raises(tarfile.TarError):
+        bootstrap.unpack_source(evil, tmp_path / "dest")
+    assert not (tmp_path / "dest" / "src" / "outside").exists()
 
 
 def test_bootstrap_builds_the_env_from_the_lockfile_with_python_3_12(
