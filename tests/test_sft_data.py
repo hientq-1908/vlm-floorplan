@@ -44,6 +44,19 @@ def test_read_samples_skips_blank_lines(tmp_path: Path) -> None:
         (lambda s: s["messages"].pop(), "last message"),
         (lambda s: s["messages"][1].update(role="robot"), "'role'"),
         (lambda s: s.update(tools="nope"), "'tools'"),
+        (
+            lambda s: s["messages"].extend(
+                [
+                    {"role": "user", "content": "Now add one more bedroom."},
+                    {"role": "assistant", "reasoning_content": "Adding.", "content": "Done."},
+                ]
+            ),
+            "exactly one user message, got 2",
+        ),
+        (
+            lambda s: s.update(messages=[m for m in s["messages"] if m["role"] != "user"]),
+            "exactly one user message, got 0",
+        ),
     ],
 )
 def test_malformed_sample_is_rejected_with_its_position(tmp_path: Path, mutate, message) -> None:

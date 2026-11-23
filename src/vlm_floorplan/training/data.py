@@ -102,6 +102,12 @@ def _check_sample(record: Any, where: str) -> Sample:
     for index, message in enumerate(messages):
         if not isinstance(message, dict) or message.get("role") not in ROLES:
             raise ValueError(f"{where} ({sample_id}): messages[{index}] has no valid 'role'")
+    user_turns = sum(message["role"] == "user" for message in messages)
+    if user_turns != 1:
+        raise ValueError(
+            f"{where} ({sample_id}): stage 1 takes one-turn conversations, so a sample needs "
+            f"exactly one user message, got {user_turns}"
+        )
     if messages[-1]["role"] != "assistant":
         raise ValueError(f"{where} ({sample_id}): the last message must be from the assistant")
     if tools is not None and not isinstance(tools, list):

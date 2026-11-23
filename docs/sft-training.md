@@ -36,6 +36,8 @@ An assistant message holds its thinking in `reasoning_content` and its tool call
 `tools` is the tool schema block the chat template writes into the prompt.
 The code never looks at tool names or room types, so those can change without touching it.
 Each sample must end with an assistant message, and ids must be unique.
+Each sample must hold exactly one user message, because stage 1 is one-turn only (see [The chat template](#the-chat-template)).
+Tool calls and tool responses inside that one turn are fine; a sample with a second user turn is rejected, not dropped.
 A bad line fails with its file name and line number.
 
 ## How the data becomes a loss
