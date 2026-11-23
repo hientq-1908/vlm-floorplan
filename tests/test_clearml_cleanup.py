@@ -132,9 +132,9 @@ class ProjectTask(FakeTask):
         self.events: list[str] = []
         self.fail = fail
 
-    def delete(self) -> None:
+    def delete(self) -> list[str]:
         self.events.append("delete task")
-        super().delete()
+        return super().delete()
 
     def remove_empty_project(self) -> list[str]:
         self.events.append("remove project")
@@ -176,24 +176,78 @@ def raising(error: Exception):  # noqa: ANN201
     return delete
 
 
-def test_delete_that_fails_only_on_missing_files_counts_when_the_task_is_gone() -> None:
-    delete_tolerating_missing_files(raising(FilesMissingError()), FilesMissingError, lambda: False)
+FILE_A = "https://files.example/vlm/sft_train.zip"
+FILE_B = "https://files.example/vlm/sft_run.zip"
+
+
+def files_failed(*uris: str) -> FilesMissingError:
+    return FilesMissingError("Failed deleting the following URIs:\n" + "\n".join(uris))
+
+
+def never(uri: str) -> bool:
+    raise AssertionError(f"no file should be checked, got {uri}")
+
+
+def test_delete_that_fails_only_on_already_gone_files_counts_when_the_task_is_gone() -> None:
+    lines = delete_tolerating_missing_files(
+        raising(files_failed(FILE_A, FILE_B)), FilesMissingError, lambda: False, lambda _: True
+    )
+    assert lines == []
+
+
+def test_files_still_on_the_server_after_the_delete_are_reported_by_name() -> None:
+    lines = delete_tolerating_missing_files(
+        raising(files_failed(FILE_A, FILE_B, "model id: m1")),
+        FilesMissingError,
+        lambda: False,
+        lambda uri: uri == FILE_A,
+    )
+    assert len(lines) == 1
+    assert FILE_A not in lines[0]
+    assert FILE_B in lines[0]
+    assert "model id: m1" in lines[0]
+
+
+def test_collector_reports_leftover_files_from_the_delete(tmp_path: Path) -> None:
+    class LeftoverTask(FakeTask):
+        def delete(self) -> list[str]:
+            super().delete()
+            return [f"could not be removed: {FILE_B}"]
+
+    report = collect_and_delete(LeftoverTask(good_task(tmp_path)._artifacts), tmp_path / "out")
+    assert f"could not be removed: {FILE_B}" in report.checks
 
 
 def test_delete_error_is_raised_when_the_task_still_exists() -> None:
     with pytest.raises(FilesMissingError):
         delete_tolerating_missing_files(
-            raising(FilesMissingError()), FilesMissingError, lambda: True
+            raising(files_failed(FILE_A)), FilesMissingError, lambda: True, never
+        )
+
+
+def test_a_delete_error_that_is_not_about_files_is_raised_even_when_the_task_is_gone() -> None:
+    with pytest.raises(FilesMissingError):
+        delete_tolerating_missing_files(
+            raising(FilesMissingError("Task deletion failed: read timed out")),
+            FilesMissingError,
+            lambda: False,
+            never,
         )
 
 
 def test_other_errors_are_never_swallowed() -> None:
     with pytest.raises(PermissionError):
         delete_tolerating_missing_files(
-            raising(PermissionError()), FilesMissingError, lambda: False
+            raising(PermissionError()), FilesMissingError, lambda: False, never
         )
 
 
 def test_a_false_result_from_the_server_is_an_error() -> None:
     with pytest.raises(RuntimeError, match="did not delete"):
-        delete_tolerating_missing_files(lambda: False, FilesMissingError, lambda: False)
+        delete_tolerating_missing_files(lambda: False, FilesMissingError, lambda: False, never)
+
+
+def test_a_clean_delete_reports_nothing() -> None:
+    assert (
+        delete_tolerating_missing_files(lambda: True, FilesMissingError, lambda: False, never) == []
+    )

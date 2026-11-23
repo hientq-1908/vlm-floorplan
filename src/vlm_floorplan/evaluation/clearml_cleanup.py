@@ -61,20 +61,36 @@ def remove_empty_projects(client: Any, project_id: str) -> CleanupReport:
     return report
 
 
+FAILED_URIS_HEADER = "Failed deleting the following URIs:"
+
+
 def delete_tolerating_missing_files(
-    delete: Callable[[], Any], error_type: type[Exception], still_exists: Callable[[], bool]
-) -> None:
+    delete: Callable[[], Any],
+    error_type: type[Exception],
+    still_exists: Callable[[], bool],
+    is_gone: Callable[[str], bool],
+) -> list[str]:
     """Run a task delete that may raise because artifact files were already gone (HTTP 404).
 
-    ClearML deletes the task first and then its files; a file that is not on the server makes it
-    raise although the task is gone. What counts is the result: if the task no longer exists the
-    delete worked, and any other failure is raised as before.
+    ClearML deletes the task first and then its files, and raises one error listing every file it
+    could not delete. A listed file that is already gone (`is_gone`, HTTP 404) is fine. Any other
+    listed file is still on the server, so it is returned as a report line instead of being hidden.
+    An error that is not about files, or a task that still exists, is raised as before.
     """
     try:
         deleted = delete()
-    except error_type:
-        if still_exists():
+    except error_type as err:
+        message = str(err)
+        if still_exists() or not message.startswith(FAILED_URIS_HEADER):
             raise
-        return
+        failed = [line.strip() for line in message.splitlines()[1:] if line.strip()]
+        left = [uri for uri in failed if not is_gone(uri)]
+        if not left:
+            return []
+        return [
+            "ClearML task deleted, but these files could not be removed, delete them by hand: "
+            + ", ".join(left)
+        ]
     if not deleted:
         raise RuntimeError("ClearML did not delete the task")
+    return []

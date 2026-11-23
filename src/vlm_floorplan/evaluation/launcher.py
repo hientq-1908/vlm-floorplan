@@ -44,6 +44,8 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 JOB_SCRIPT = "scripts/baseline_job.py"
 REQUIREMENTS = "deploy/vllm/requirements-baseline.txt"
 CONSOLE_LOG_EVENTS = 10_000
+HTTP_NOT_FOUND = 404
+FILE_CHECK_TIMEOUT_SECONDS = 30
 
 
 def _git(*args: str) -> str:
@@ -147,7 +149,7 @@ class ClearMlTask:
             downloaded[name] = RemoteArtifact(path=target, expected_size=artifact.size)
         return downloaded
 
-    def delete(self) -> None:
+    def delete(self) -> list[str]:
         from clearml import Task
 
         from vlm_floorplan.evaluation.clearml_cleanup import delete_tolerating_missing_files
@@ -159,7 +161,22 @@ class ClearMlTask:
                 return False
             return True
 
-        delete_tolerating_missing_files(
+        def is_gone(uri: str) -> bool:
+            import requests
+            from clearml.backend_interface.base import InterfaceBase
+
+            if not uri.startswith(("http://", "https://")):
+                return False
+            headers = InterfaceBase._get_default_session().add_auth_headers({})
+            try:
+                response = requests.head(
+                    uri, headers=headers, allow_redirects=True, timeout=FILE_CHECK_TIMEOUT_SECONDS
+                )
+            except requests.RequestException:
+                return False
+            return response.status_code == HTTP_NOT_FOUND
+
+        return delete_tolerating_missing_files(
             lambda: self.task.delete(
                 delete_artifacts_and_models=True,
                 skip_models_used_by_other_tasks=True,
@@ -167,6 +184,7 @@ class ClearMlTask:
             ),
             self.task.DeleteError,
             still_exists,
+            is_gone,
         )
 
     def remove_empty_project(self) -> list[str]:

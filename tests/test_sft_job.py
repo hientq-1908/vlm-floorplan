@@ -272,8 +272,9 @@ class FakeTask:
     def download_artifacts(self, dest: Path) -> dict[str, RemoteArtifact]:
         return self._artifacts
 
-    def delete(self) -> None:
+    def delete(self) -> list[str]:
         self.deleted = True
+        return []
 
     def remove_empty_project(self) -> list[str]:
         return []
