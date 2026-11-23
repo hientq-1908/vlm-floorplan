@@ -29,6 +29,7 @@ from vlm_floorplan.evaluation.baseline_spec import (
     SPLIT_ARTIFACT,
     BaselineSpec,
     default_runs_dir,
+    pack_sets,
     pack_split,
 )
 from vlm_floorplan.evaluation.collect import (
@@ -84,18 +85,28 @@ def git_state() -> dict[str, Any]:
 def describe_plan(spec: BaselineSpec, state: dict[str, Any], runs_dir: Path, plans: int) -> str:
     """The dry-run report: what launching would do, in order."""
     local = runs_dir / spec.run_name
+    text = spec.task == "text2graph"
+    packed = (
+        f"pack {plans} set files (prompts, references, reference tables) into one archive"
+        if text
+        else f"pack {plans} plans and their images from the split into one archive"
+    )
+    evaluated = (
+        f"for each variant {spec.variants} and set {spec.prompt_sets}"
+        if text
+        else f"once per resolution {spec.resolutions} px"
+    )
     steps = [
-        f"pack {plans} plans and their images from the split into one archive",
+        packed,
         f"create task {spec.run_name!r} in project {spec.project!r} from "
         f"{state['branch']} @ {state['commit'][:10]} ({state['remote']})",
         f"install the packages in {REQUIREMENTS} (vLLM pinned to 0.33.0) on the agent",
         f"attach the archive as artifact {SPLIT_ARTIFACT!r} and set the job parameters",
         f"enqueue on queue {spec.queue!r}",
-        "on the agent: serve the model with vLLM, evaluate once per resolution "
-        f"{spec.resolutions} px, upload one result archive",
+        f"on the agent: serve the model with vLLM, evaluate {evaluated}, upload one result archive",
         "wait for the job to finish",
         f"download every artifact, the console log, scalars and task details to {local}",
-        "verify: artifact sizes, zip integrity, SHA-256 manifest, one metrics.json per resolution",
+        "verify: artifact sizes, zip integrity, SHA-256 manifest, one metrics.json per run",
         "only if all checks pass: delete the task and its artifacts from ClearML",
     ]
     warnings = []
@@ -156,11 +167,15 @@ class ClearMlTask:
 
 
 def create_and_enqueue(spec: BaselineSpec, split: Path, state: dict[str, Any]) -> str:
+    """`split` is a split JSONL (image task) or a set directory (text2graph task)."""
     from clearml import Task
 
     with tempfile.TemporaryDirectory(prefix="baseline-split-") as tmp:
         archive = Path(tmp) / "split.tar.gz"
-        pack_split(split, archive, spec.limit)
+        if spec.task == "text2graph":
+            pack_sets(split, archive)
+        else:
+            pack_split(split, archive, spec.limit)
         task = Task.create(
             project_name=spec.project,
             task_name=spec.run_name,
@@ -209,15 +224,21 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     launch = sub.add_parser("launch", help="create and enqueue the baseline task")
-    launch.add_argument("--split", type=Path, required=True, help="eval split JSONL of PlanRecords")
+    launch.add_argument("--split", type=Path, help="image task: eval split JSONL of PlanRecords")
+    launch.add_argument("--task", choices=["image", "text2graph"], default="image")
+    launch.add_argument("--sets-dir", type=Path, help="text2graph task: dir from `build-sets`")
+    launch.add_argument("--variants", nargs="+", default=["as-is", "one-example"])
+    launch.add_argument(
+        "--prompt-sets", nargs="+", default=["template_test", "paraphrase_test", "behavior_test"]
+    )
     launch.add_argument("--run-name", default=datetime.now(UTC).strftime("baseline-%Y%m%d-%H%M"))
     launch.add_argument("--queue", default="3090")
     launch.add_argument("--project", default="vlm-floorplan")
     launch.add_argument("--model", default="Qwen/Qwen3.5-4B")
     launch.add_argument("--resolutions", type=int, nargs="+", default=[768, 1280])
-    launch.add_argument("--max-tokens", type=int, default=12288)
+    launch.add_argument("--max-tokens", type=int, help="default 12288 (image) or 8192 (text2graph)")
     launch.add_argument("--limit", type=int)
-    launch.add_argument("--concurrency", type=int, default=8)
+    launch.add_argument("--concurrency", type=int, help="default 8 (image) or 24 (text2graph)")
     launch.add_argument("--docker-image")
     launch.add_argument("--dry-run", action="store_true")
     launch.add_argument("--wait", action="store_true", help="wait, then collect and delete")
@@ -233,28 +254,36 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _launch(args: argparse.Namespace) -> int:
+    text = args.task == "text2graph"
+    source = args.sets_dir if text else args.split
+    if source is None:
+        sys.exit("--sets-dir is required for --task text2graph" if text else "--split is required")
     spec = BaselineSpec(
+        task=args.task,
+        variants=args.variants,
+        prompt_sets=args.prompt_sets,
         run_name=args.run_name,
         project=args.project,
         queue=args.queue,
         model=args.model,
         resolutions=args.resolutions,
-        max_tokens=args.max_tokens,
+        max_tokens=args.max_tokens or (8192 if text else 12288),
         limit=args.limit,
-        concurrency=args.concurrency,
+        concurrency=args.concurrency or (24 if text else 8),
         docker_image=args.docker_image,
     )
     state = git_state()
     if args.dry_run:
         with tempfile.TemporaryDirectory(prefix="baseline-dry-") as tmp:
-            plans = pack_split(args.split, Path(tmp) / "split.tar.gz", spec.limit)
+            archive = Path(tmp) / "split.tar.gz"
+            plans = pack_sets(source, archive) if text else pack_split(source, archive, spec.limit)
         print(describe_plan(spec, state, args.runs_dir, plans))
         return 0
     if state["dirty"] and not args.allow_dirty:
         sys.exit("refusing to launch: uncommitted changes (the agent only sees commits)")
     if not state["pushed"]:
         sys.exit("refusing to launch: this commit is not on any remote branch; push it first")
-    task_id = create_and_enqueue(spec, args.split, state)
+    task_id = create_and_enqueue(spec, source, state)
     print(f"enqueued task {task_id} on queue {spec.queue!r}")
     if not args.wait:
         print(f"when it finishes: collect --task-id {task_id} --run-name {spec.run_name}")

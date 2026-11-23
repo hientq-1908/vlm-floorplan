@@ -3,6 +3,7 @@
 This document explains how a model is scored and how the zero-shot baseline (milestone M2) is run.
 The code lives in `src/vlm_floorplan/evaluation/`.
 Nothing here needs a GPU except the baseline job itself.
+The text-to-graph evaluation (description text in, `new_plan` call out) is in [text2graph-evaluation.md](text2graph-evaluation.md).
 
 ## The question the baseline answers
 

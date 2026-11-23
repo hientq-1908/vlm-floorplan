@@ -16,6 +16,7 @@
 #   MODEL [Qwen/Qwen3.5-4B]   SERVED_NAME [qwen3.5-4b]   SERVE_HOST [127.0.0.1]   SERVE_PORT [8000]
 #   MAX_MODEL_LEN [20480]     GPU_MEMORY_UTILIZATION [0.90]
 #   LORA_MODULES []           e.g. "floorplan=/path/to/adapter" (enables --enable-lora)
+#   MAX_LORA_RANK [32]        largest adapter rank to accept (vLLM defaults to 16; the SFT rank is 32)
 #
 # Usage: deploy/vllm/serve.sh [extra vllm flags...]
 set -euo pipefail
@@ -50,7 +51,7 @@ args=(
   --tool-call-parser qwen3_coder
 )
 if [ -n "${LORA_MODULES:-}" ]; then
-  args+=(--enable-lora --lora-modules "$LORA_MODULES")
+  args+=(--enable-lora --max-lora-rank "${MAX_LORA_RANK:-32}" --lora-modules "$LORA_MODULES")
 fi
 
 echo "serving ${MODEL} as ${SERVED_NAME} on ${SERVE_HOST}:${SERVE_PORT} (vLLM ${VLLM_VERSION})" >&2

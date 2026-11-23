@@ -39,8 +39,18 @@ class BaselineSpec(BaseModel):
     queue: str = "3090"
     model: str = "Qwen/Qwen3.5-4B"
     served_name: str = "qwen3.5-4b"
+    task: str = "image"
+    """"image" (floorplan image to graph, one pass per resolution) or "text2graph" (description
+    text to graph, one pass per variant and prompt set)."""
     resolutions: list[int] = Field(default_factory=lambda: [768, 1280], min_length=1)
     """Longest image side in pixels, one evaluation pass per value (the M2 comparison)."""
+    variants: list[str] = Field(default_factory=lambda: ["as-is", "one-example"], min_length=1)
+    """Text-to-graph prompt variants: the training system prompt as is, or with a worked example."""
+    prompt_sets: list[str] = Field(
+        default_factory=lambda: ["template_test", "paraphrase_test", "behavior_test"],
+        min_length=1,
+    )
+    """Text-to-graph sets to run; a missing or empty file is skipped."""
     max_tokens: int = 12288
     limit: int | None = None
     concurrency: int = 8
@@ -51,7 +61,10 @@ class BaselineSpec(BaseModel):
         return {
             "model": self.model,
             "served_name": self.served_name,
+            "task": self.task,
             "resolutions": ",".join(str(r) for r in self.resolutions),
+            "variants": ",".join(self.variants),
+            "prompt_sets": ",".join(self.prompt_sets),
             "max_tokens": str(self.max_tokens),
             "limit": "" if self.limit is None else str(self.limit),
             "concurrency": str(self.concurrency),
@@ -88,3 +101,23 @@ def unpack_split(archive: Path, dest: Path) -> Path:
     with tarfile.open(archive) as tar:
         tar.extractall(dest, filter="data")  # "data" refuses absolute paths and `..`
     return dest / SPLIT_FILE_IN_ARCHIVE
+
+
+def pack_sets(sets_dir: Path, archive: Path) -> int:
+    """Pack a text-to-graph set directory (the JSONL sets and their references); returns files."""
+    names = sorted(
+        p.name for p in sets_dir.iterdir() if p.is_file() and p.suffix in {".jsonl", ".json"}
+    )
+    if not any(name.endswith("_test.jsonl") for name in names):
+        raise ValueError(f"{sets_dir} holds no text-to-graph sets")
+    with tarfile.open(archive, "w:gz") as tar:
+        for name in names:
+            tar.add(sets_dir / name, arcname=name)
+    return len(names)
+
+
+def unpack_sets(archive: Path, dest: Path) -> Path:
+    """Unpack a set archive; returns the directory holding the set files."""
+    with tarfile.open(archive) as tar:
+        tar.extractall(dest, filter="data")
+    return dest

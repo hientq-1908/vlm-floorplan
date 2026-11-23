@@ -35,6 +35,9 @@ from vlm_floorplan.evaluation.config import EvalConfig
 from vlm_floorplan.evaluation.harness import collect_outputs
 from vlm_floorplan.evaluation.run_dir import write_manifest
 from vlm_floorplan.evaluation.scoring import score_run
+from vlm_floorplan.evaluation.t2g_harness import T2gConfig
+from vlm_floorplan.evaluation.t2g_harness import collect_outputs as collect_t2g
+from vlm_floorplan.evaluation.t2g_scoring import score_run as score_t2g
 
 log = logging.getLogger("baseline_job")
 
@@ -59,11 +62,58 @@ def spec_from_parameters(params: dict[str, str]) -> BaselineSpec:
         run_name=params["run_name"],
         model=params["model"],
         served_name=params["served_name"],
+        task=params.get("task", "image"),
         resolutions=[int(side) for side in params["resolutions"].split(",")],
+        variants=params.get("variants", "as-is,one-example").split(","),
+        prompt_sets=params.get("prompt_sets", "template_test,paraphrase_test,behavior_test").split(
+            ","
+        ),
         max_tokens=int(params["max_tokens"]),
         limit=int(params["limit"]) if params.get("limit") else None,
         concurrency=int(params["concurrency"]),
     )
+
+
+def run_text_baseline(
+    spec: BaselineSpec, sets_dir: Path, out_dir: Path, client: ChatClient, base_url: str
+) -> dict[str, Any]:
+    """One text-to-graph run per prompt variant and set, all against the same server.
+
+    A run that fails is logged and skipped, so the others still get measured.
+    """
+    runs: list[str] = []
+    scores: dict[str, Any] = {}
+    errors: dict[str, str] = {}
+    for variant in spec.variants:
+        for set_name in spec.prompt_sets:
+            prompts = sets_dir / f"{set_name}.jsonl"
+            if not prompts.is_file() or not prompts.read_text().strip():
+                log.info("skipping %s: no prompts", set_name)
+                continue
+            name = f"{variant}-{set_name.replace('_', '-')}"
+            config = T2gConfig(
+                run_name=name,
+                prompts=str(prompts),
+                variant=variant,
+                base_url=base_url,
+                model=spec.served_name,
+                max_tokens=spec.max_tokens,
+                limit=spec.limit,
+                concurrency=spec.concurrency,
+                timeout_s=REQUEST_TIMEOUT_S,
+            )
+            try:
+                log.info("evaluating %s", name)
+                rows = collect_t2g(config, client, out_dir / name)
+                scores[name] = score_t2g(out_dir / name, rows)
+            except Exception as err:
+                log.exception("run %s failed", name)
+                errors[name] = f"{type(err).__name__}: {err}"
+                continue
+            runs.append(name)
+    result = {"spec": spec.model_dump(), "runs": runs, "scores": scores, "errors": errors}
+    (out_dir / "job_summary.json").write_text(json.dumps(result, indent=2, default=str) + "\n")
+    return result
 
 
 def run_baseline(
@@ -190,7 +240,8 @@ def run_job(spec: BaselineSpec, split: Path, out_dir: Path, archive: Path) -> di
     try:
         with vllm_server(spec, out_dir / "vllm.log") as base_url:
             client = HttpChatClient(base_url, timeout_s=REQUEST_TIMEOUT_S)
-            result = run_baseline(spec, split, out_dir, client, base_url)
+            runner = run_text_baseline if spec.task == "text2graph" else run_baseline
+            result = runner(spec, split, out_dir, client, base_url)
     except Exception as err:  # the bundle below must still be written
         log.exception("job failed before or during evaluation")
         result["errors"]["job"] = f"{type(err).__name__}: {err}"

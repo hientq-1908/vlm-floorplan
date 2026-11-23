@@ -37,6 +37,8 @@ class ChatResponse:
     completion_tokens: int | None
     latency_s: float
     extra: dict[str, Any] = field(default_factory=dict)
+    tool_calls: list[dict[str, Any]] = field(default_factory=list)
+    """Structured tool calls as {"name": ..., "arguments": <JSON text>}, in the order made."""
 
 
 class ChatClient(Protocol):
@@ -51,6 +53,14 @@ def parse_chat_response(body: dict[str, Any], latency_s: float) -> ChatResponse:
     except (KeyError, IndexError, TypeError) as err:
         raise ApiError(f"response has no choices[0].message: {str(body)[:200]}") from err
     usage = body.get("usage") or {}
+    tool_calls = [
+        {
+            "name": (call.get("function") or {}).get("name"),
+            "arguments": (call.get("function") or {}).get("arguments"),
+        }
+        for call in message.get("tool_calls") or []
+        if isinstance(call, dict)
+    ]
     return ChatResponse(
         content=message.get("content") or "",
         reasoning=message.get("reasoning_content") or message.get("reasoning") or "",
@@ -58,6 +68,7 @@ def parse_chat_response(body: dict[str, Any], latency_s: float) -> ChatResponse:
         prompt_tokens=usage.get("prompt_tokens"),
         completion_tokens=usage.get("completion_tokens"),
         latency_s=latency_s,
+        tool_calls=tool_calls,
     )
 
 

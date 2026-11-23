@@ -10,6 +10,7 @@ from vlm_floorplan.evaluation.client import HttpChatClient
 from vlm_floorplan.evaluation.config import EvalConfig
 from vlm_floorplan.evaluation.harness import collect_outputs, load_records
 from vlm_floorplan.evaluation.scoring import score_run
+from vlm_floorplan.evaluation.t2g_cli import add_commands, run_command
 
 
 def _add_run_arguments(parser: argparse.ArgumentParser) -> None:
@@ -88,8 +89,11 @@ def main(argv: list[str] | None = None) -> int:
         help="split JSONL, or the unpacked split directory, when config.json's path is gone "
         "(a collected ClearML run records the agent's temporary copy); config.json is unchanged",
     )
+    add_commands(sub)
     args = parser.parse_args(argv)
 
+    if args.command in ("t2g-run", "t2g-rescore"):
+        return run_command(args)
     if args.command == "rescore":
         config = EvalConfig.model_validate_json((args.run_dir / "config.json").read_text())
         split = args.split or Path(config.split)
