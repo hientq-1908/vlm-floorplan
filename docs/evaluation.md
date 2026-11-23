@@ -179,6 +179,8 @@ The collector deletes the task only after every check passes:
 
 After the task is deleted, the collector also deletes the ClearML project it was filed under, and the project's hidden subprojects, when they are empty.
 A project that still holds a task or model is left alone and named in the report, because it is not ours to delete.
+Anything still on ClearML after the delete (task files the server could not remove, a kept project, a failed project cleanup) is printed as a `WARNING:` line and recorded under `clearml_leftovers` in `DOWNLOAD_VERIFIED.json`, so it can be removed by hand.
+The download is already verified at that point, so the command still exits with status 0.
 
 A task that is still queued or running is refused before anything is downloaded, because deleting it would kill the job.
 If any check fails, the task is kept and the command exits with status 2.
