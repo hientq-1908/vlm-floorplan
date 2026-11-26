@@ -8,6 +8,11 @@ slower. Smoke mode runs a few optimizer steps on a small slice and writes `smoke
   step pays for warm-up). With a single step it falls back to that step.
 - `peak_memory_allocated_gib` and `peak_memory_reserved_gib`: the GPU's high-water marks.
 - `projected_hours_per_epoch`: what one epoch over the full set would take at the measured speed.
+- `losses` and `loss_finite`: the logged loss of every step, and whether all of them are finite
+  numbers. fp16 can overflow where bf16 does not, so this is the check that the precision works.
+- `grad_norms` and `steps_with_finite_grad`: fp16 starts with a large loss scale and the trainer
+  skips (logs `nan`) every step whose gradients overflow until the scale has come down, normally
+  the first 3 to 5 steps. A smoke run needs enough steps to get past them.
 
 The slice always contains the longest kept sample, so the memory figure is the worst case.
 """
@@ -15,6 +20,7 @@ The slice always contains the longest kept sample, so the memory figure is the w
 from __future__ import annotations
 
 import json
+import math
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -78,6 +84,8 @@ class SmokeMeter(TrainerCallback):
         self._start = 0.0
         self._marks: list[tuple[float, int]] = []
         """(seconds since start, tokens seen) at the end of each optimizer step."""
+        self._losses: list[float] = []
+        self._grad_norms: list[float] = []
 
     def on_train_begin(self, args: Any, state: Any, control: Any, **kwargs: Any) -> None:
         reset_cuda_peak()
@@ -85,6 +93,13 @@ class SmokeMeter(TrainerCallback):
 
     def on_step_end(self, args: Any, state: Any, control: Any, **kwargs: Any) -> None:
         self._marks.append((self._clock() - self._start, int(state.num_input_tokens_seen)))
+
+    def on_log(
+        self, args: Any, state: Any, control: Any, logs: dict[str, Any] | None = None, **kwargs: Any
+    ) -> None:
+        if logs and "loss" in logs:
+            self._losses.append(float(logs["loss"]))
+            self._grad_norms.append(float(logs.get("grad_norm", math.nan)))
 
     def on_train_end(self, args: Any, state: Any, control: Any, **kwargs: Any) -> None:
         self.out_path.write_text(json.dumps(self.result(), indent=2) + "\n")
@@ -109,5 +124,9 @@ class SmokeMeter(TrainerCallback):
             "tokens_per_second": round(tokens_per_second, 1),
             "epoch_tokens": self.epoch_tokens,
             "projected_hours_per_epoch": None if projected is None else round(projected, 1),
+            "losses": self._losses,
+            "loss_finite": bool(self._losses) and all(math.isfinite(x) for x in self._losses),
+            "grad_norms": self._grad_norms,
+            "steps_with_finite_grad": sum(math.isfinite(x) for x in self._grad_norms),
             "gpu": self._memory(),
         }

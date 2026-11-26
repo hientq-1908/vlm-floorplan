@@ -5,6 +5,9 @@
 [model]
 name = "Qwen/Qwen3.5-4B"
 dtype = "bfloat16"
+# "none" keeps the weights in `dtype` (bf16 LoRA, one 24 GB GPU). "nf4" loads the language model
+# 4-bit (QLoRA) for 16 GB GPUs without bf16; `sft_train.py --qlora` sets the whole combination.
+quantization = "none"
 
 [lora]
 r = 32
@@ -37,6 +40,8 @@ gradient_accumulation_steps = 16
 num_epochs = 1.0
 gradient_checkpointing = true
 bf16 = true
+# fp16 is for GPUs without bf16 (T4): needs model.dtype = "float16" and bf16 = false.
+fp16 = false
 # Samples of similar length share a batch (no packing in v1).
 group_by_length = true
 logging_steps = 10
@@ -44,6 +49,11 @@ logging_steps = 10
 report_to = "none"
 # A fraction below 1 is a share of all steps: adapter snapshots at 25, 50, 75 and 100 %.
 save_steps = 0.25
+# true: snapshots also keep the optimizer state so `--resume` can continue after a stop (free
+# notebook sessions end after 12 h); the last 2 are kept. false: small adapter-only snapshots.
+resumable = false
+# Stop cleanly with a snapshot after this many hours (0 = never), to end before a session limit.
+time_limit_hours = 0.0
 seed = 42
 
 [smoke]

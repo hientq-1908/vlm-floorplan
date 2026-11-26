@@ -7,7 +7,12 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from vlm_floorplan.training.config import DEFAULT_CONFIG, apply_overrides, load_config
+from vlm_floorplan.training.config import (
+    DEFAULT_CONFIG,
+    QLORA_FP16_OVERRIDES,
+    apply_overrides,
+    load_config,
+)
 
 
 def test_defaults_are_the_plan_recipe() -> None:
@@ -27,6 +32,47 @@ def test_defaults_are_the_plan_recipe() -> None:
     assert train.weight_decay == 0.0
     assert (train.per_device_batch_size, train.gradient_accumulation_steps) == (1, 16)
     assert train.bf16 and train.gradient_checkpointing and train.group_by_length
+
+
+def test_default_is_bf16_lora_without_quantization() -> None:
+    config = load_config()
+    assert config.model.quantization == "none"
+    assert (config.model.dtype, config.train.bf16, config.train.fp16) == ("bfloat16", True, False)
+    assert not config.train.resumable and config.train.time_limit_hours == 0
+
+
+def test_qlora_overrides_select_4bit_weights_and_fp16_compute() -> None:
+    config = load_config(overrides=QLORA_FP16_OVERRIDES)
+    assert config.model.quantization == "nf4"
+    assert (config.model.dtype, config.train.bf16, config.train.fp16) == ("float16", False, True)
+
+
+def test_qlora_keeps_the_recipe_and_every_guard_setting() -> None:
+    default, qlora = load_config(), load_config(overrides=QLORA_FP16_OVERRIDES)
+    assert qlora.lora == default.lora
+    assert qlora.data == default.data
+    assert qlora.train.gradient_checkpointing and qlora.train.group_by_length
+    assert qlora.train.model_copy(update={"bf16": True, "fp16": False}) == default.train
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        (["train.fp16=true"], "cannot both be true"),
+        (["train.bf16=false", "train.fp16=true"], "needs model.dtype = 'float16'"),
+        (['model.quantization="nf4"', 'model.dtype="float32"'], "float16 or bfloat16"),
+        (['model.quantization="int4"'], "quantization"),
+        (["train.time_limit_hours=11"], "needs train.resumable"),
+    ],
+)
+def test_inconsistent_precision_settings_are_rejected(overrides: list[str], message: str) -> None:
+    with pytest.raises(ValidationError, match=message):
+        load_config(overrides=overrides)
+
+
+def test_time_limit_with_resumable_snapshots_is_accepted() -> None:
+    config = load_config(overrides=["train.time_limit_hours=11", "train.resumable=true"])
+    assert config.train.time_limit_hours == 11
 
 
 def test_max_length_defaults_to_5120() -> None:

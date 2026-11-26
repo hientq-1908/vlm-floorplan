@@ -63,6 +63,48 @@ def test_single_step_falls_back_to_that_step(tmp_path: Path) -> None:
     assert json.loads((tmp_path / "smoke.json").read_text())["tokens_per_second"] == 500.0
 
 
+def log_losses(meter: SmokeMeter, losses: list[float]) -> None:
+    for loss in losses:
+        meter.on_log(None, None, None, logs={"loss": loss, "learning_rate": 1e-4})
+    meter.on_log(None, None, None, logs={"train_runtime": 3.0})  # the closing summary has no loss
+
+
+def test_losses_are_recorded_and_finite(tmp_path: Path) -> None:
+    clock = FakeClock()
+    meter = make_meter(tmp_path, clock)
+    log_losses(meter, [1.5, 1.25])
+    run_steps(meter, clock, [(1.0, 10), (1.0, 20)])
+    result = json.loads((tmp_path / "smoke.json").read_text())
+    assert result["losses"] == [1.5, 1.25]
+    assert result["loss_finite"] is True
+
+
+def test_skipped_fp16_steps_show_as_non_finite_grad_norms(tmp_path: Path) -> None:
+    clock = FakeClock()
+    meter = make_meter(tmp_path, clock)
+    for loss, grad in [(2.5, float("nan")), (2.4, float("nan")), (2.2, 11.0)]:
+        meter.on_log(None, None, None, logs={"loss": loss, "grad_norm": grad})
+    run_steps(meter, clock, [(1.0, 10), (1.0, 20), (1.0, 30)])
+    result = json.loads((tmp_path / "smoke.json").read_text())
+    assert result["steps_with_finite_grad"] == 1
+    assert result["loss_finite"] is True  # the loss is fine: only the scaled gradients overflowed
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf")])
+def test_a_non_finite_loss_is_flagged(tmp_path: Path, bad: float) -> None:
+    clock = FakeClock()
+    meter = make_meter(tmp_path, clock)
+    log_losses(meter, [1.5, bad])
+    run_steps(meter, clock, [(1.0, 10), (1.0, 20)])
+    assert json.loads((tmp_path / "smoke.json").read_text())["loss_finite"] is False
+
+
+def test_no_logged_loss_is_not_reported_as_finite(tmp_path: Path) -> None:
+    clock = FakeClock()
+    run_steps(make_meter(tmp_path, clock), clock, [(1.0, 10), (1.0, 20)])
+    assert json.loads((tmp_path / "smoke.json").read_text())["loss_finite"] is False
+
+
 def test_peak_gpu_memory_is_written_when_there_is_a_gpu(tmp_path: Path) -> None:
     clock = FakeClock()
     gpu = {

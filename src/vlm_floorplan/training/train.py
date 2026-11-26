@@ -9,6 +9,13 @@ Steps, in order:
 4. train with TRL's `SFTTrainer` on the pre-tokenized samples,
 5. save the adapter to `<run dir>/adapter` and a summary to `<run dir>/train_summary.json`.
 
+`--qlora` switches to 4-bit QLoRA with fp16 compute for 16 GB GPUs without bf16 (T4, P100).
+
+`--resume` continues an unfinished run in its existing run directory from the last snapshot, for
+free notebook sessions that end after 12 h. The run must have been started with
+`train.resumable = true` (snapshots then keep the optimizer state) and the same settings.
+`train.time_limit_hours` ends a session cleanly with a snapshot before the platform cuts it.
+
 `--smoke` does the same on a slice of a few optimizer steps and writes `smoke.json` with tokens
 per second and peak GPU memory (`smoke.py`). It never saves a model, and it writes to the sibling
 directory `<output_dir>-smoke`, so a smoke run never blocks the full run that follows it.
@@ -26,7 +33,12 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from vlm_floorplan.training.config import DEFAULT_CONFIG, TrainConfig, load_config
+from vlm_floorplan.training.config import (
+    DEFAULT_CONFIG,
+    QLORA_FP16_OVERRIDES,
+    TrainConfig,
+    load_config,
+)
 
 if TYPE_CHECKING:
     from torch import nn
@@ -46,7 +58,7 @@ def run_dir_for(output_dir: Path, smoke: bool) -> Path:
 
 
 def check_run_dir_is_free(run_dir: Path) -> None:
-    """An existing run directory with files is never reused."""
+    """An existing run directory with files is never reused (`--resume` is the exception)."""
     if run_dir.exists() and any(run_dir.iterdir()):
         raise FileExistsError(
             f"{run_dir} already has files; pick another one with --set train.output_dir=..."
@@ -73,6 +85,7 @@ def make_sft_config(config: TrainConfig, run_dir: Path, *, smoke: bool) -> Any:
         gradient_accumulation_steps=t.gradient_accumulation_steps,
         num_train_epochs=1.0 if smoke else t.num_epochs,
         bf16=t.bf16,
+        fp16=t.fp16,
         gradient_checkpointing=t.gradient_checkpointing,
         gradient_checkpointing_kwargs={"use_reentrant": False},
         train_sampling_strategy="group_by_length" if t.group_by_length else "random",
@@ -82,7 +95,8 @@ def make_sft_config(config: TrainConfig, run_dir: Path, *, smoke: bool) -> Any:
         report_to="none" if smoke else t.report_to,
         save_strategy="no" if smoke else "steps",
         save_steps=t.save_steps,
-        save_only_model=True,
+        save_only_model=not t.resumable,
+        save_total_limit=2 if t.resumable else None,
         include_num_input_tokens_seen="non_padding",
         seed=t.seed,
     )
@@ -96,10 +110,14 @@ def run_training(
     config: TrainConfig,
     *,
     smoke: bool = False,
+    resume: bool = False,
     model: nn.Module | None = None,
     tokenizer: PreTrainedTokenizerBase | None = None,
 ) -> Path:
     """Run one SFT job and return its run directory.
+
+    With `resume`, an unfinished run in its existing directory continues from its last snapshot.
+    A run stopped by `train.time_limit_hours` returns without a final adapter; resume it.
 
     `model` and `tokenizer` are for tests (a tiny random model); a real run leaves them out.
     """
@@ -112,16 +130,25 @@ def run_training(
         freeze_vision,
         load_base_model,
         make_lora_config,
+        upcast_trainable_to_fp32,
     )
+    from vlm_floorplan.training.session import TimeLimit, check_resume
     from vlm_floorplan.training.smoke import SmokeMeter, select_smoke_slice
 
+    if resume and smoke:
+        raise ValueError("--resume cannot be combined with --smoke")
     run_dir = run_dir_for(config.train.output_dir, smoke)
-    check_run_dir_is_free(run_dir)
+    settings = {"smoke": smoke, **config.model_dump(mode="json")}
+    if resume:
+        snapshot = check_resume(run_dir, settings, CONFIG_FILE, ADAPTER_DIR)
+        log.info("resuming %s from %s", run_dir, snapshot.name)
+    else:
+        check_run_dir_is_free(run_dir)
     tokenizer = tokenizer or AutoTokenizer.from_pretrained(config.model.name)
     # Bad data fails here, before a run directory exists.
     items, report = load_training_data(config.data.train_file, tokenizer, config.data.max_length)
     run_dir.mkdir(parents=True, exist_ok=True)
-    _write_json(run_dir / CONFIG_FILE, {"smoke": smoke, **config.model_dump(mode="json")})
+    _write_json(run_dir / CONFIG_FILE, settings)
     _write_json(run_dir / DATA_REPORT_FILE, report.to_json())
     if smoke:
         count = config.smoke.steps * config.train.gradient_accumulation_steps
@@ -134,7 +161,12 @@ def run_training(
     model = model or load_base_model(config.model)
     log.info("froze %d vision tensors", freeze_vision(model))
 
-    callbacks = [SmokeMeter(run_dir / SMOKE_FILE, report.kept_tokens)] if smoke else []
+    callbacks: list[Any] = []
+    if smoke:
+        callbacks.append(SmokeMeter(run_dir / SMOKE_FILE, report.kept_tokens))
+    limit = TimeLimit(config.train.time_limit_hours) if config.train.time_limit_hours else None
+    if limit is not None and not smoke:
+        callbacks.append(limit)
     trainer = SFTTrainer(
         model=model,
         args=make_sft_config(config, run_dir, smoke=smoke),
@@ -143,13 +175,22 @@ def run_training(
         peft_config=make_lora_config(config.lora),
         callbacks=callbacks,
     )
+    if config.train.fp16:
+        log.info("moved %d LoRA tensors to fp32", upcast_trainable_to_fp32(trainer.model))
     trainable = check_trainable(trainer.model)
     log.info("trainable parameters: %s", f"{trainable:,}")
 
     started = time.time()
-    trainer.train()
+    trainer.train(resume_from_checkpoint=True if resume else None)
     if smoke:
         log.info("wrote %s", run_dir / SMOKE_FILE)
+        return run_dir
+    if limit is not None and limit.expired and trainer.state.global_step < trainer.state.max_steps:
+        log.info(
+            "time limit reached at step %d of %d; continue with --resume",
+            trainer.state.global_step,
+            trainer.state.max_steps,
+        )
         return run_dir
 
     trainer.model.save_pretrained(run_dir / ADAPTER_DIR)
@@ -178,12 +219,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="override one config value for this run, e.g. --set train.learning_rate=5e-5",
     )
     parser.add_argument("--smoke", action="store_true", help="a few steps, write smoke.json")
+    parser.add_argument(
+        "--qlora",
+        action="store_true",
+        help="4-bit QLoRA with fp16 compute, for 16 GB GPUs without bf16 (T4); --set still wins",
+    )
+    parser.add_argument(
+        "--resume", action="store_true", help="continue an unfinished run from its last snapshot"
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     args = build_parser().parse_args(argv)
-    config = load_config(args.config, args.overrides)
-    run_training(config, smoke=args.smoke)
+    overrides = [*QLORA_FP16_OVERRIDES, *args.overrides] if args.qlora else args.overrides
+    config = load_config(args.config, overrides)
+    run_training(config, smoke=args.smoke, resume=args.resume)
     return 0

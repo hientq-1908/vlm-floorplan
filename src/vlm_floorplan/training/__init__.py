@@ -8,6 +8,8 @@ Read in this order:
 - `smoke.py`    tokens per second and peak GPU memory
 - `train.py`    the training run itself (`scripts/sft_train.py`)
 - `generate.py` quick generation check of a saved adapter
+- `session.py`  time limit and resume across free notebook sessions
+- `free_tier.py` the input directory for `notebooks/kaggle_sft.ipynb`
 - `job.py`, `launcher.py`   the ClearML side
 
 `docs/sft-training.md` explains the whole flow. Importing this package needs only the core
