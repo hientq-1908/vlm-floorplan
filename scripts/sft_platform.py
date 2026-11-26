@@ -79,3 +79,17 @@ def stage_resume(input_roots: list[Path], run_name: str, run_dir: Path) -> Path 
         return None
     shutil.copytree(earlier[0], run_dir)
     return run_dir
+
+
+def prepare_run_dir(run_dir: Path) -> bool:
+    """True when `run_dir` holds snapshots to continue with `--resume`.
+
+    A run stopped before its first snapshot leaves only its settings and data report; that
+    directory is removed so the run starts over. A finished run (with `adapter/`) is left alone.
+    """
+    if not run_dir.is_dir() or (run_dir / "adapter").exists():
+        return False
+    if any(path.is_dir() for path in run_dir.glob("checkpoint-*")):
+        return True
+    shutil.rmtree(run_dir)
+    return False

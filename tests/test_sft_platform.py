@@ -99,3 +99,29 @@ def test_stage_resume_refuses_two_candidate_runs(tmp_path: Path) -> None:
         platform.stage_resume(
             [tmp_path / "input", tmp_path / "other"], "sft-stage1", tmp_path / "work" / "sft-stage1"
         )
+
+
+def test_prepare_run_dir_resumes_a_run_with_a_snapshot(tmp_path: Path) -> None:
+    run = make_earlier_run(tmp_path)
+    assert platform.prepare_run_dir(run) is True
+    assert (run / "checkpoint-50" / "optimizer.pt").is_file()
+
+
+def test_prepare_run_dir_clears_a_run_stopped_before_its_first_snapshot(tmp_path: Path) -> None:
+    run = tmp_path / "sft-stage1"
+    run.mkdir()
+    (run / "run_config.json").write_text("{}")
+    (run / "data_report.json").write_text("{}")
+    assert platform.prepare_run_dir(run) is False
+    assert not run.exists()
+
+
+def test_prepare_run_dir_leaves_a_finished_run_alone(tmp_path: Path) -> None:
+    run = make_earlier_run(tmp_path)
+    (run / "adapter").mkdir()
+    assert platform.prepare_run_dir(run) is False
+    assert (run / "adapter").is_dir()
+
+
+def test_prepare_run_dir_starts_fresh_without_a_run(tmp_path: Path) -> None:
+    assert platform.prepare_run_dir(tmp_path / "sft-stage1") is False

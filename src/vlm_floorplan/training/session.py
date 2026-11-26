@@ -76,7 +76,7 @@ def check_resume(
     snapshot = latest_checkpoint(run_dir)
     if snapshot is None or not (snapshot / "optimizer.pt").is_file():
         raise FileNotFoundError(
-            f"cannot resume: no snapshot with optimizer state in {run_dir} "
-            "(start the run with train.resumable = true)"
+            f"cannot resume: no snapshot with optimizer state in {run_dir} (the run stopped "
+            "before its first snapshot, or was started without train.resumable = true)"
         )
     return snapshot

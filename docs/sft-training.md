@@ -297,6 +297,7 @@ Free sessions end, so the full run is resumable.
 The notebook stops training `SAVE_MARGIN_HOURS` (0.5) before `SESSION_HOURS` (12) and saves a checkpoint.
 To continue, save a version of the notebook, start a new session of the same notebook, add its previous output as an input (Add Input, Notebook Output Files), and run it again.
 The notebook copies the earlier run from the read-only input and continues with `--resume`, after the same checks as above, so it does not silently start over.
+Only a run that stopped before its first checkpoint (it holds just `run_config.json` and `data_report.json`) is removed and started over.
 Download the finished `sft-stage1/adapter/` from the notebook's output page.
 
 On Colab the same thing happens in the Drive folder `vlm-floorplan-sft` (the two input files, and the runs in `vlm-floorplan-sft/runs`), so reconnecting and running the notebook again resumes the run.
