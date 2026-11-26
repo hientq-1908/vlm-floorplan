@@ -147,7 +147,7 @@ uv run --group ml python scripts/sft_generate.py \
 
 On a GPU with 16 GB or without bf16, add `--qlora` to the smoke and full commands (see "Model and LoRA"; the Kaggle section below uses it).
 
-Smoke mode trains on steps x accumulation samples: the longest kept sample plus the first ones.
+Smoke mode trains on steps x accumulation x per-device batch samples: the longest kept sample plus the first ones.
 The longest sample makes the memory figure the worst case.
 `smoke.json` holds:
 

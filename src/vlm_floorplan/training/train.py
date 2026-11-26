@@ -151,7 +151,8 @@ def run_training(
     _write_json(run_dir / CONFIG_FILE, settings)
     _write_json(run_dir / DATA_REPORT_FILE, report.to_json())
     if smoke:
-        count = config.smoke.steps * config.train.gradient_accumulation_steps
+        t = config.train
+        count = config.smoke.steps * t.gradient_accumulation_steps * t.per_device_batch_size
         items = select_smoke_slice(items, count)
         log.info("smoke mode: %d samples, %d optimizer steps", len(items), config.smoke.steps)
     longest = max(item.length for item in items)

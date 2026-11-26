@@ -145,6 +145,16 @@ def test_smoke_run_writes_speed_and_memory_and_no_adapter(
     assert report["dropped_count"] == 1
 
 
+def test_smoke_run_takes_the_configured_steps_with_a_per_device_batch_above_one(
+    tmp_path: Path, train_file: Path, max_length: int
+) -> None:
+    config = tiny_config(tmp_path, train_file, max_length, "train.per_device_batch_size=2")
+    run_dir = run_training(config, smoke=True, model=tiny_qwen3_5_model())
+
+    smoke = json.loads((run_dir / "smoke.json").read_text())
+    assert smoke["optimizer_steps"] == config.smoke.steps
+
+
 def test_smoke_projection_covers_one_epoch_whatever_num_epochs_is(
     tmp_path: Path, train_file: Path, max_length: int
 ) -> None:

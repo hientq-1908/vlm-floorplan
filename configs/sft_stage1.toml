@@ -57,5 +57,5 @@ time_limit_hours = 0.0
 seed = 42
 
 [smoke]
-# Smoke mode runs this many optimizer steps on a slice of steps x gradient_accumulation_steps samples.
+# Smoke mode runs this many optimizer steps on a slice of steps x gradient_accumulation_steps x per_device_batch_size samples.
 steps = 4
