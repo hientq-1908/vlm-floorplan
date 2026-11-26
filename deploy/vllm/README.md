@@ -15,7 +15,7 @@ LORA_MODULES="floorplan=/path/to/adapter" deploy/vllm/serve.sh
 | `--reasoning-parser qwen3` | Splits the `<think>` block into `reasoning_content`, so `content` holds only the answer. |
 | `--enable-auto-tool-choice --tool-call-parser qwen3_coder` | The setup the Qwen3.5 model card gives for tool calling, needed by the editing agent. |
 | `--limit-mm-per-prompt '{"image": 1}'` | One plan image per request. |
-| `MAX_MODEL_LEN=20480` | A 1280 px image (about 1.2K tokens), the prompt, and the 12K completion budget that thinking mode needs. The ClearML baseline job sets it to its `--max-tokens` plus 8192. |
+| `MAX_MODEL_LEN=88064` | The longest text-to-graph agent-loop transcript at `t2g-run`'s default `--max-tokens` 8192 (`t2g_harness.context_tokens`); it also covers a 1280 px image, the prompt and the 12K completion budget of the perception harness. The ClearML baseline job sets it from its `--max-tokens`. |
 
 All settings can be changed with environment variables; the list is at the top of the script.
 The script uses an installed `vllm` only if it is exactly 0.33.0, and otherwise runs it with `uvx`.

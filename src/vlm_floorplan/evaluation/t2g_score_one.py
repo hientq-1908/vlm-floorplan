@@ -8,7 +8,8 @@ accepted call, but a plan can still be found in the first reply (XML tool call i
 reasoning, bare JSON in the answer) by the same parser the perception baseline uses. Both are
 kept, so "how often does the model follow the format" stays visible next to "how good is the
 plan it meant". A transcript that reached the call cap is not a clean finish: it has no strict
-plan and no behavior of it is correct.
+plan and no behavior of it is correct. A transcript cut short by a failed later request
+(`turn_error`) is scored on what it applied before the failure.
 """
 
 from __future__ import annotations
@@ -231,6 +232,7 @@ def score_row(
         "behavior": row.behavior,
         "finish_reason": (output.get("turns") or [output])[-1].get("finish_reason"),
         "api_error": output.get("api_error") or output.get("input_error"),
+        "turn_error": output.get("turn_error"),
     }
     if base["api_error"]:
         failed = {"failed_call": True, "correct": False, "no_tool_call": False}

@@ -140,6 +140,7 @@ def aggregate_run(scored: Sequence[dict[str, Any]]) -> dict[str, Any]:
         "n_prompts": len(scored),
         "n_draw_prompts": n,
         "call_cap_rate": ratio(sum(r["hit_call_cap"] for r in scored), len(scored)),
+        "partial_transcripts": sum(bool(r.get("turn_error")) for r in scored),
     }
     if draws:
         summary |= {

@@ -12,7 +12,9 @@ serve the base model with `deploy/vllm/serve.sh`, and a LoRA adapter with
 
 Run directory: `config.json`, `system_prompt.txt`, `inputs.jsonl` (the first request sent),
 `outputs.jsonl`, then `per_prompt.jsonl` and `metrics.json` from scoring and `MANIFEST.json`.
-A run resumes: prompts with a complete transcript are skipped, failed ones retried from the start.
+A request that fails after earlier turns keeps those turns: the transcript is recorded with a
+`turn_error` and scored on what it applied. A run resumes: prompts with a complete transcript are
+skipped, failed and partial ones retried from the start.
 """
 
 from __future__ import annotations
@@ -37,6 +39,8 @@ from vlm_floorplan.evaluation.t2g_prompt import (
 from vlm_floorplan.text2graph.rows import PromptRow, read_rows
 
 MAX_TOOL_CALLS = 8
+PARTIAL_KEY = "turn_error"
+"""Output-row key of a transcript cut short by a failed later request; retried on resume."""
 PROMPT_TOKENS = 8192
 """The first request without completion: system prompt, twelve tool schemas, user turn, template."""
 TOOL_RESPONSE_TOKENS = 2048
@@ -159,16 +163,24 @@ def _assistant_message(turn: dict[str, Any], ids: list[str]) -> dict[str, Any]:
 def run_prompt(
     config: T2gConfig, client: ChatClient, row: PromptRow, request: dict[str, Any]
 ) -> dict[str, Any]:
-    """The agent loop for one prompt; the transcript, or an `api_error` record."""
+    """The agent loop for one prompt.
+
+    The transcript; an `api_error` record when the first request fails; the transcript so far
+    with a `turn_error` when a later request fails.
+    """
     messages = list(request["messages"])
     graph = row.start_graph()
     turns: list[dict[str, Any]] = []
     calls: list[dict[str, Any]] = []
+    error: str | None = None
     while len(calls) < config.max_tool_calls:
         try:
             reply = client.complete(request | {"messages": list(messages)})
         except ApiError as err:
-            return {"prompt_id": row.id, "api_error": str(err)}
+            if not turns:
+                return {"prompt_id": row.id, "api_error": str(err)}
+            error = str(err)
+            break
         turn = _turn(reply)
         turns.append(turn)
         if not reply.tool_calls:
@@ -191,15 +203,18 @@ def run_prompt(
                 {"role": "tool", "tool_call_id": call_id, "name": name, "content": result.text}
             )
     first, last = turns[0], turns[-1]
-    return {
+    output = {
         "prompt_id": row.id,
         **{k: v for k, v in first.items() if k != "tool_responses"},
         "turns": turns,
         "calls": calls,
-        "hit_call_cap": bool(last["tool_calls"]),
+        "hit_call_cap": error is None and bool(last["tool_calls"]),
         "final_content": last["content"],
         "final_graph": graph.model_dump(mode="json"),
     }
+    if error is not None:
+        output[PARTIAL_KEY] = error
+    return output
 
 
 def collect_outputs(config: T2gConfig, client: ChatClient, run_dir: Path) -> list[PromptRow]:
@@ -211,7 +226,7 @@ def collect_outputs(config: T2gConfig, client: ChatClient, run_dir: Path) -> lis
     done = {
         row["prompt_id"]
         for row in read_jsonl(run_dir / "outputs.jsonl")
-        if not any(key in row for key in FAILURE_KEYS)
+        if not any(key in row for key in (*FAILURE_KEYS, PARTIAL_KEY))
     }
     todo = [row for row in rows if row.id not in done]
     sent = {row["prompt_id"] for row in read_jsonl(run_dir / "inputs.jsonl")}
@@ -233,6 +248,7 @@ def collect_outputs(config: T2gConfig, client: ChatClient, run_dir: Path) -> lis
 
 __all__ = [
     "NON_IDENTITY_FIELDS",
+    "PARTIAL_KEY",
     "T2gConfig",
     "build_request",
     "call_arguments",

@@ -101,14 +101,15 @@ class GoldClient:
 class LoopingClient:
     """Calls a harmless edit forever, or fails on a chosen request."""
 
-    def __init__(self, fail_on=None):
-        self.requests, self.fail_on = [], fail_on
+    def __init__(self, fail_on=None, call=("r0", "r1", "door")):
+        self.requests, self.fail_on, self.call = [], fail_on, call
 
     def complete(self, request):
         self.requests.append(request)
         if self.fail_on is not None and len(self.requests) == self.fail_on:
             raise ApiError("server restarting")
-        return reply(calls=[("set_link_kind", {"room_a": "r0", "room_b": "r1", "kind": "door"})])
+        a, b, kind = self.call
+        return reply(calls=[("set_link_kind", {"room_a": a, "room_b": b, "kind": kind})])
 
 
 def run(sets, name, mode, tmp_path, limit=None):
@@ -205,22 +206,45 @@ def test_a_run_resumes_and_skips_prompts_with_a_complete_transcript(sets, tmp_pa
         collect_outputs(config.model_copy(update={"temperature": 0.1}), again, run_dir)
 
 
-def test_a_failure_inside_the_loop_is_retried_from_the_start(sets, tmp_path):
+def test_a_failure_inside_the_loop_keeps_the_turns_so_far_and_is_retried(sets, tmp_path):
     rows = read_rows(sets / "behavior_test.jsonl")
     row = next(r for r in rows if r.kind == "edit_door")
     prompts = tmp_path / "one.jsonl"
     prompts.write_text(row.model_dump_json() + "\n")
     config = T2gConfig(run_name="r", prompts=str(prompts), model="m", max_tool_calls=3)
     run_dir = tmp_path / "run"
-    collect_outputs(config, LoopingClient(fail_on=2), run_dir)
-    first = [json.loads(line) for line in (run_dir / "outputs.jsonl").read_text().splitlines()]
-    assert first == [{"prompt_id": row.id, "api_error": "server restarting"}]
+    asked = (row.expect["a"], row.expect["b"], row.expect["link"])
+    collect_outputs(config, LoopingClient(fail_on=2, call=asked), run_dir)
+    (partial,) = [json.loads(line) for line in (run_dir / "outputs.jsonl").read_text().splitlines()]
+    assert partial["turn_error"] == "server restarting" and not partial["hit_call_cap"]
+    assert [c["name"] for c in partial["calls"]] == ["set_link_kind"]
+    assert partial["calls"][0]["applied"]
+    summary = score_run(run_dir, [row], sets)
+    assert summary["partial_transcripts"] == 1
+    (scored,) = [
+        json.loads(line) for line in (run_dir / "per_prompt.jsonl").read_text().splitlines()
+    ]
+    assert scored["edit_effect_ok"] and scored["correct"] and not scored["api_error"]
     again = LoopingClient()
     collect_outputs(config, again, run_dir)
     assert len(again.requests) == 3
-    collect_outputs(config, LoopingClient(), run_dir)
     lines = (run_dir / "outputs.jsonl").read_text().splitlines()
     assert len(lines) == 2 and json.loads(lines[-1])["hit_call_cap"]
+    assert "turn_error" not in json.loads(lines[-1])
+
+
+def test_a_failed_first_request_is_a_failed_call(sets, tmp_path):
+    rows = read_rows(sets / "behavior_test.jsonl")
+    row = next(r for r in rows if r.kind == "edit_door")
+    prompts = tmp_path / "one.jsonl"
+    prompts.write_text(row.model_dump_json() + "\n")
+    config = T2gConfig(run_name="r", prompts=str(prompts), model="m")
+    run_dir = tmp_path / "run"
+    collect_outputs(config, LoopingClient(fail_on=1), run_dir)
+    lines = (run_dir / "outputs.jsonl").read_text().splitlines()
+    assert [json.loads(line) for line in lines] == [
+        {"prompt_id": row.id, "api_error": "server restarting"}
+    ]
 
 
 def test_the_loop_runs_each_call_and_sends_back_the_real_tool_response(sets, tmp_path):

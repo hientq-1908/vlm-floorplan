@@ -21,6 +21,9 @@ Thinking is on, with the sampling defaults of the model card (temperature 0.6, t
 One request is the agent loop the model is trained on.
 Every structured tool call in a reply runs in the real environment (`agent.tools.call_tool`) on the running plan, the assistant turn and one tool message per call with the real response are appended, and the conversation is sent again, until the model replies without a tool call.
 The loop stops at 8 tool calls (`max_tool_calls`); a prompt that reaches it is flagged `hit_call_cap`, counted in `call_cap_rate`, and is not a clean finish: it has no strict plan and no behavior of it is correct.
+A failed first request is recorded as an `api_error`, a failed call with no plan.
+A request that fails after earlier turns keeps the transcript so far, flagged with a `turn_error`, and it is scored on what it applied before the failure; `metrics.json` counts these in `partial_transcripts`.
+A resumed run retries both from the start.
 `outputs.jsonl` keeps the whole transcript per prompt: the first reply's fields at the top level, `turns` (content, reasoning, tool calls, finish reason, token counts and tool responses of every turn), `calls` (the ordered call sequence), `final_content` (the last reply) and `final_graph`.
 The final reply is sampled, so reply faithfulness can be scored from it, but it is not scored yet (see follow-ups).
 
@@ -131,6 +134,7 @@ The gap between them is how often the model follows the format.
 | | `validity_rate` | Share whose first `new_plan` call the environment accepts. Refusals are counted by reason in `invalid_reasons`. |
 | | `strict_plan_rate` | Share that end with a plan from an accepted `new_plan`, a retry after a refusal included, and did not reach the call cap. |
 | | `call_cap_rate` | Share of prompts that reached the 8-call cap, overall and per behavior kind. |
+| | `partial_transcripts` | Prompts whose transcript was cut short by a failed later request (`turn_error`). |
 | Requirements | `requirement_satisfaction` | Met over stated requirements, micro-averaged; a reply with no plan meets none. By level and by requirement type. |
 | | `all_met_rate` | Share of prompts with every requirement met. The headline. By level, source and input kind. |
 | | `l4_plan_score_*` | `plan_score` against the source plan, for L4 prompts only. |
@@ -152,8 +156,8 @@ A model that returns the source plan scores 1.0 everywhere, which a test checks.
 Serve the base model, or the base model with a LoRA adapter, then run the same command with the served name.
 
 ```bash
-MAX_MODEL_LEN=88064 deploy/vllm/serve.sh                       # base, served as qwen3.5-4b
-MAX_MODEL_LEN=88064 LORA_MODULES="floorplan=/path/to/adapter" deploy/vllm/serve.sh  # adds --enable-lora
+deploy/vllm/serve.sh                                         # base, served as qwen3.5-4b
+LORA_MODULES="floorplan=/path/to/adapter" deploy/vllm/serve.sh  # adds --enable-lora
 
 uv run python -m vlm_floorplan.evaluation t2g-run --prompts DIR/template_test.jsonl \
   --run-name base-template --model qwen3.5-4b
@@ -163,7 +167,7 @@ uv run python -m vlm_floorplan.evaluation t2g-rescore runs/base-template
 ```
 
 The served context must hold the longest transcript, not one request: the last of up to 8 requests resends the first prompt, every earlier turn and every tool response, and asks for `max_tokens` more.
-`t2g_harness.context_tokens(max_tokens)` gives the size, 88064 for the default `max_tokens` of 8192; vLLM refuses a longer request with HTTP 400 and the prompt is recorded as a failed call.
+`t2g_harness.context_tokens(max_tokens)` gives the size, 88064 for the default `max_tokens` of 8192, which is the `serve.sh` default; vLLM refuses a longer request with HTTP 400.
 The ClearML job sets it this way by itself.
 
 `--variant one-example` appends one worked example to the system prompt.
