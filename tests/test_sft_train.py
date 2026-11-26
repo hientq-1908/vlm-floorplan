@@ -10,6 +10,7 @@ Needs the ml group and the Qwen3.5-4B tokenizer files (`uv run --group ml pytest
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -200,6 +201,52 @@ def test_load_base_model_reads_a_saved_model_in_the_configured_dtype(tmp_path: P
     from vlm_floorplan.training.model import load_base_model
 
     tiny_qwen3_5_model().save_pretrained(tmp_path / "tiny")
-    model = load_base_model(ModelConfig(name=str(tmp_path / "tiny"), dtype="bfloat16"))
+    model = load_base_model(
+        ModelConfig(name=str(tmp_path / "tiny"), dtype="bfloat16", quantization="none")
+    )
     assert type(model).__name__ == "Qwen3_5ForConditionalGeneration"
     assert next(model.parameters()).dtype == torch.bfloat16
+
+
+def test_resumable_run_that_hits_the_time_limit_continues_with_resume(
+    tmp_path: Path, train_file: Path, max_length: int
+) -> None:
+    extra = ("train.resumable=true", "train.save_steps=1", "train.num_epochs=1")
+    stopped = run_training(
+        tiny_config(tmp_path, train_file, max_length, *extra, "train.time_limit_hours=1e-9"),
+        model=tiny_qwen3_5_model(),
+    )
+    assert not (stopped / "adapter").exists()
+    snapshot = max(stopped.glob("checkpoint-*"), key=lambda path: int(path.name.split("-")[1]))
+    assert (snapshot / "optimizer.pt").is_file()
+
+    config = tiny_config(tmp_path, train_file, max_length, *extra)
+    finished = run_training(config, resume=True, model=tiny_qwen3_5_model())
+
+    assert finished == stopped
+    assert (finished / "adapter" / "adapter_model.safetensors").is_file()
+    state = json.loads((max(finished.glob("checkpoint-*")) / "trainer_state.json").read_text())
+    assert state["global_step"] == 8 // ACCUMULATION
+    assert len(list(finished.glob("checkpoint-*"))) <= 2  # save_total_limit
+
+
+def test_resume_without_a_resumable_first_run_is_refused(
+    tmp_path: Path, train_file: Path, max_length: int
+) -> None:
+    config = tiny_config(tmp_path, train_file, max_length)
+    run_training(config, smoke=False, model=tiny_qwen3_5_model())
+    shutil.rmtree(tmp_path / "run" / "adapter")  # pretend it never finished
+    with pytest.raises(FileNotFoundError, match="train.resumable"):
+        run_training(config, resume=True, model=tiny_qwen3_5_model())
+
+
+def test_resume_and_smoke_cannot_be_combined(
+    tmp_path: Path, train_file: Path, max_length: int
+) -> None:
+    with pytest.raises(ValueError, match="--resume cannot be combined"):
+        run_training(
+            tiny_config(tmp_path, train_file, max_length),
+            smoke=True,
+            resume=True,
+            model=tiny_qwen3_5_model(),
+        )

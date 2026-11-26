@@ -12,11 +12,23 @@ from __future__ import annotations
 
 import tomllib
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 DEFAULT_CONFIG = Path(__file__).resolve().parents[3] / "configs" / "sft_stage1.toml"
+
+QLORA_FP16_OVERRIDES = [
+    "model.dtype=float16",
+    'model.quantization="nf4"',
+    "train.bf16=false",
+    "train.fp16=true",
+]
+"""`--set` overrides that switch the recipe to QLoRA with fp16 compute (`sft_train.py --qlora`).
+
+For 16 GB GPUs without bf16 (T4, P100): the base model is loaded 4-bit and the rest of the
+recipe is unchanged. The default stays bf16 LoRA on a 24 GB GPU.
+"""
 
 
 class _Section(BaseModel):
@@ -25,7 +37,16 @@ class _Section(BaseModel):
 
 class ModelConfig(_Section):
     name: str
-    dtype: str
+    dtype: Literal["float32", "float16", "bfloat16"]
+    """Dtype of the weights that stay unquantized, and the compute dtype of 4-bit layers."""
+    quantization: Literal["none", "nf4"]
+    """`nf4` loads the language model's linear layers 4-bit (QLoRA, bitsandbytes)."""
+
+    @model_validator(mode="after")
+    def _quantized_weights_compute_in_half_precision(self) -> Self:
+        if self.quantization == "nf4" and self.dtype == "float32":
+            raise ValueError("model.quantization = 'nf4' needs model.dtype float16 or bfloat16")
+        return self
 
 
 class LoraSettings(_Section):
@@ -51,10 +72,15 @@ class TrainSettings(_Section):
     num_epochs: float = Field(gt=0)
     gradient_checkpointing: bool
     bf16: bool
+    fp16: bool
     group_by_length: bool
     logging_steps: int = Field(gt=0)
     report_to: str
     save_steps: float = Field(gt=0)
+    resumable: bool
+    """Snapshots also keep the optimizer, scheduler and RNG state (last 2 kept), for `--resume`."""
+    time_limit_hours: float = Field(ge=0)
+    """Stop cleanly with a resumable snapshot after this many hours; 0 means no limit."""
     seed: int
 
 
@@ -68,6 +94,16 @@ class TrainConfig(_Section):
     data: DataConfig
     train: TrainSettings
     smoke: SmokeConfig
+
+    @model_validator(mode="after")
+    def _one_mixed_precision_mode(self) -> Self:
+        if self.train.bf16 and self.train.fp16:
+            raise ValueError("train.bf16 and train.fp16 cannot both be true")
+        if self.train.fp16 and self.model.dtype != "float16":
+            raise ValueError("train.fp16 needs model.dtype = 'float16'")
+        if self.train.time_limit_hours and not self.train.resumable:
+            raise ValueError("train.time_limit_hours needs train.resumable = true")
+        return self
 
 
 def _set_path(tree: dict[str, Any], dotted: str, value: Any) -> None:
