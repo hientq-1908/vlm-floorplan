@@ -23,7 +23,6 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
-import zipfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -33,7 +32,7 @@ from vlm_floorplan.evaluation.baseline_spec import BaselineSpec
 from vlm_floorplan.evaluation.client import ChatClient, HttpChatClient
 from vlm_floorplan.evaluation.config import EvalConfig
 from vlm_floorplan.evaluation.harness import collect_outputs
-from vlm_floorplan.evaluation.run_dir import write_manifest
+from vlm_floorplan.evaluation.run_dir import bundle_results
 from vlm_floorplan.evaluation.scoring import score_run
 
 log = logging.getLogger("baseline_job")
@@ -166,16 +165,6 @@ def _stop(process: subprocess.Popen[bytes]) -> None:
     except subprocess.TimeoutExpired:
         os.killpg(process.pid, signal.SIGKILL)
         process.wait()
-
-
-def bundle_results(out_dir: Path, archive: Path) -> Path:
-    """Write the manifest, then zip the directory (the manifest is inside the zip)."""
-    write_manifest(out_dir)
-    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
-        for path in sorted(out_dir.rglob("*")):
-            if path.is_file():
-                zf.write(path, path.relative_to(out_dir))
-    return archive
 
 
 def run_job(spec: BaselineSpec, split: Path, out_dir: Path, archive: Path) -> dict[str, Any]:

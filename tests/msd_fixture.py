@@ -3,7 +3,8 @@
 The real files are pickled `networkx.Graph`s whose centroids are `torch` tensors.
 Neither library is installed here, so the helper plants stand-in modules under
 those names just long enough to pickle with the same class paths, then removes
-them. The result has the byte-level shape of a real file: a `networkx.classes.graph.Graph`
+them (restoring any real module that was already imported, such as torch when the ml group
+is installed). The result has the byte-level shape of a real file: a `networkx.classes.graph.Graph`
 object whose `__dict__` holds `_node` and `_adj`.
 """
 
@@ -54,6 +55,7 @@ def _standins() -> Iterator[None]:
         "torch": {},
         "torch._utils": {"_rebuild_tensor_v2": _rebuild_tensor_v2},
     }
+    originals = {name: sys.modules.get(name) for name in planted}
     for name, attrs in planted.items():
         module = types.ModuleType(name)
         module.__dict__.update(attrs)
@@ -61,8 +63,11 @@ def _standins() -> Iterator[None]:
     try:
         yield
     finally:
-        for name in planted:
-            del sys.modules[name]
+        for name, original in originals.items():
+            if original is None:
+                del sys.modules[name]
+            else:  # deleting a real torch here would make the next `import torch` run it twice
+                sys.modules[name] = original
 
 
 def msd_pickle(rooms: dict[int, tuple[int, Rect]], edges: list[tuple[int, int, str]]) -> bytes:

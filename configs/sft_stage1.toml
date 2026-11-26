@@ -1,0 +1,51 @@
+# SFT stage 1 (text to graph): every training setting lives here.
+# The values are the recipe of plan section 6.1 to 6.3. `docs/sft-training.md` explains each one.
+# Change a value for one run without editing this file: `--set train.learning_rate=5e-5`.
+
+[model]
+name = "Qwen/Qwen3.5-4B"
+dtype = "bfloat16"
+
+[lora]
+r = 32
+alpha = 64
+dropout = 0.05
+# Full-attention layers (8): q_proj, k_proj, v_proj, o_proj.
+# Linear-attention layers (24): in_proj_qkv, in_proj_z, out_proj.
+# MLP of every layer (32): gate_proj, up_proj, down_proj.
+# in_proj_a, in_proj_b and conv1d stay frozen on purpose.
+target_modules = [
+  "q_proj", "k_proj", "v_proj", "o_proj",
+  "in_proj_qkv", "in_proj_z", "out_proj",
+  "gate_proj", "up_proj", "down_proj",
+]
+
+[data]
+# Training samples, one JSON object per line: id, messages, tools.
+train_file = "data/sft/train.jsonl"
+# Samples longer than this many tokens are dropped and counted, never truncated.
+max_length = 5120
+
+[train]
+output_dir = "outputs/sft-stage1"
+learning_rate = 1e-4
+lr_scheduler = "cosine"
+warmup_ratio = 0.03
+weight_decay = 0.0
+per_device_batch_size = 1
+gradient_accumulation_steps = 16
+num_epochs = 1.0
+gradient_checkpointing = true
+bf16 = true
+# Samples of similar length share a batch (no packing in v1).
+group_by_length = true
+logging_steps = 10
+# "none" locally; the ClearML job sets "clearml" so the loss curve shows up there.
+report_to = "none"
+# A fraction below 1 is a share of all steps: adapter snapshots at 25, 50, 75 and 100 %.
+save_steps = 0.25
+seed = 42
+
+[smoke]
+# Smoke mode runs this many optimizer steps on a slice of steps x gradient_accumulation_steps samples.
+steps = 4

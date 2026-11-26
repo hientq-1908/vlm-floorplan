@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -49,6 +50,16 @@ def write_manifest(root: Path) -> dict[str, str]:
     }
     (root / MANIFEST_NAME).write_text(json.dumps(files, indent=2, sort_keys=True) + "\n")
     return files
+
+
+def bundle_results(out_dir: Path, archive: Path) -> Path:
+    """Write the manifest, then zip the directory (the manifest is inside the zip)."""
+    write_manifest(out_dir)
+    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
+        for path in sorted(out_dir.rglob("*")):
+            if path.is_file():
+                zf.write(path, path.relative_to(out_dir))
+    return archive
 
 
 def verify_manifest(root: Path) -> list[str]:

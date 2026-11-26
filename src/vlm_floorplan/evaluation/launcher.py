@@ -31,6 +31,11 @@ from vlm_floorplan.evaluation.baseline_spec import (
     default_runs_dir,
     pack_split,
 )
+from vlm_floorplan.evaluation.clearml_cleanup import (
+    CleanupReport,
+    delete_tolerating_missing_files,
+    remove_empty_projects,
+)
 from vlm_floorplan.evaluation.collect import (
     FINISHED_STATUSES,
     CollectReport,
@@ -44,6 +49,8 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 JOB_SCRIPT = "scripts/baseline_job.py"
 REQUIREMENTS = "deploy/vllm/requirements-baseline.txt"
 CONSOLE_LOG_EVENTS = 10_000
+HTTP_NOT_FOUND = 404
+FILE_CHECK_TIMEOUT_SECONDS = 30
 
 
 def _git(*args: str) -> str:
@@ -119,6 +126,7 @@ class ClearMlTask:
 
         self.task_id = task_id
         self.task = Task.get_task(task_id=task_id)
+        self.project_id = self.task.project
 
     def status(self) -> str:
         return str(self.task.get_status())
@@ -146,13 +154,46 @@ class ClearMlTask:
             downloaded[name] = RemoteArtifact(path=target, expected_size=artifact.size)
         return downloaded
 
-    def delete(self) -> None:
-        if not self.task.delete(
-            delete_artifacts_and_models=True,
-            skip_models_used_by_other_tasks=True,
-            raise_on_error=True,
-        ):
-            raise RuntimeError(f"ClearML did not delete task {self.task_id}")
+    def delete(self) -> list[str]:
+        from clearml import Task
+
+        def still_exists() -> bool:
+            try:
+                Task.get_task(task_id=self.task_id)
+            except ValueError:  # "could not be found"
+                return False
+            return True
+
+        def is_gone(uri: str) -> bool:
+            import requests
+            from clearml.backend_interface.base import InterfaceBase
+
+            if not uri.startswith(("http://", "https://")):
+                return False
+            headers = InterfaceBase._get_default_session().add_auth_headers({})
+            try:
+                response = requests.head(
+                    uri, headers=headers, allow_redirects=True, timeout=FILE_CHECK_TIMEOUT_SECONDS
+                )
+            except requests.RequestException:
+                return False
+            return response.status_code == HTTP_NOT_FOUND
+
+        return delete_tolerating_missing_files(
+            lambda: self.task.delete(
+                delete_artifacts_and_models=True,
+                skip_models_used_by_other_tasks=True,
+                raise_on_error=True,
+            ),
+            self.task.DeleteError,
+            still_exists,
+            is_gone,
+        )
+
+    def remove_empty_project(self) -> CleanupReport:
+        from clearml.backend_api.session.client import APIClient
+
+        return remove_empty_projects(APIClient(), self.project_id)
 
 
 def create_and_enqueue(spec: BaselineSpec, split: Path, state: dict[str, Any]) -> str:
@@ -195,6 +236,8 @@ def _collect(args: argparse.Namespace, task_id: str, run_name: str) -> CollectRe
     for check in report.checks:
         print(f"  ok: {check}")
     print("ClearML task deleted")
+    for warning in report.warnings:
+        print(f"WARNING: {warning}", file=sys.stderr)
     return report
 
 
