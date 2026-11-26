@@ -14,8 +14,9 @@
 #
 # Configure through environment variables (defaults in brackets):
 #   MODEL [Qwen/Qwen3.5-4B]   SERVED_NAME [qwen3.5-4b]   SERVE_HOST [127.0.0.1]   SERVE_PORT [8000]
-#   MAX_MODEL_LEN [20480]     GPU_MEMORY_UTILIZATION [0.90]
+#   MAX_MODEL_LEN [88064]     GPU_MEMORY_UTILIZATION [0.90]
 #   LORA_MODULES []           e.g. "floorplan=/path/to/adapter" (enables --enable-lora)
+#   MAX_LORA_RANK [32]        largest adapter rank to accept (vLLM defaults to 16; the SFT rank is 32)
 #
 # Usage: deploy/vllm/serve.sh [extra vllm flags...]
 set -euo pipefail
@@ -25,10 +26,12 @@ MODEL="${MODEL:-Qwen/Qwen3.5-4B}"
 SERVED_NAME="${SERVED_NAME:-qwen3.5-4b}"
 SERVE_HOST="${SERVE_HOST:-127.0.0.1}"
 SERVE_PORT="${SERVE_PORT:-8000}"
-# 20480 = a 1280 px plan image (about 1.2K tokens) + prompt + the 12K completion budget
-# that thinking mode needs. Raise it if the harness's --max-tokens goes up; the ClearML
+# 88064 = the longest text-to-graph transcript at t2g-run's default --max-tokens 8192: the
+# agent loop resends earlier turns (vlm_floorplan.evaluation.t2g_harness.context_tokens).
+# It also covers the perception harness (a 1280 px image, about 1.2K tokens, the prompt and
+# the 12K completion budget of thinking mode). Raise it if --max-tokens goes up; the ClearML
 # baseline job sets it from its --max-tokens.
-MAX_MODEL_LEN="${MAX_MODEL_LEN:-20480}"
+MAX_MODEL_LEN="${MAX_MODEL_LEN:-88064}"
 GPU_MEMORY_UTILIZATION="${GPU_MEMORY_UTILIZATION:-0.90}"
 
 # Use an installed vLLM if it is exactly the pinned version, otherwise fetch it with uvx.
@@ -50,7 +53,7 @@ args=(
   --tool-call-parser qwen3_coder
 )
 if [ -n "${LORA_MODULES:-}" ]; then
-  args+=(--enable-lora --lora-modules "$LORA_MODULES")
+  args+=(--enable-lora --max-lora-rank "${MAX_LORA_RANK:-32}" --lora-modules "$LORA_MODULES")
 fi
 
 echo "serving ${MODEL} as ${SERVED_NAME} on ${SERVE_HOST}:${SERVE_PORT} (vLLM ${VLLM_VERSION})" >&2
