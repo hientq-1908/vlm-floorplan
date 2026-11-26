@@ -27,6 +27,10 @@ METADATA_NAME = "dataset-metadata.json"
 
 def build_inputs(repo_root: Path, train_file: Path, out_dir: Path, dataset_id: str | None) -> Path:
     """Write the input directory and return it. `out_dir` must not hold files already."""
+    if dataset_id:
+        owner, _, slug = dataset_id.partition("/")
+        if not owner or not slug:
+            raise ValueError(f"dataset id {dataset_id!r} must look like owner/slug")
     if not train_file.is_file():
         raise FileNotFoundError(f"training file not found: {train_file}")
     if out_dir.exists() and any(out_dir.iterdir()):
@@ -35,9 +39,6 @@ def build_inputs(repo_root: Path, train_file: Path, out_dir: Path, dataset_id: s
     pack_repo_source(repo_root, out_dir / SOURCE_NAME)
     shutil.copyfile(train_file, out_dir / TRAIN_NAME)
     if dataset_id:
-        owner, _, slug = dataset_id.partition("/")
-        if not owner or not slug:
-            raise ValueError(f"dataset id {dataset_id!r} must look like owner/slug")
         metadata = {
             "id": dataset_id,
             "title": slug.replace("-", " "),

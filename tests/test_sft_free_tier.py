@@ -89,3 +89,4 @@ def test_a_missing_training_file_and_a_bad_dataset_id_are_refused(
         build_inputs(repo, tmp_path / "missing.jsonl", tmp_path / "a", None)
     with pytest.raises(ValueError, match="owner/slug"):
         build_inputs(repo, train_file, tmp_path / "b", "just-a-slug")
+    assert build_inputs(repo, train_file, tmp_path / "b", "owner/slug") == tmp_path / "b"
