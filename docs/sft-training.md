@@ -98,6 +98,9 @@ On a 16 GB GPU without bf16 (T4, Kaggle, Colab free) the same recipe runs as QLo
 - `model.quantization = "nf4"`: the base weights load 4-bit (bitsandbytes, double quantization), and the vision tower, `in_proj_a` and `in_proj_b` stay 16-bit,
 - `model.dtype = "float16"` and `train.fp16 = true` instead of bf16, so the compute is fp16 with a loss scaler,
 - the LoRA weights stay fp32 (TRL would otherwise cast them to bf16), and `check_trainable` runs unchanged, so the vision tower is still frozen and only LoRA weights train.
+- the fp16 loss scaler starts at `train.fp16_init_scale = 1024` instead of torch's 65536.
+  From 65536, every one of the first 4 optimizer steps overflowed on a T4 and was skipped (`grad_norm` NaN) while the scale halved down to 4096, and one more step overflowed later at 4096.
+  1024 is below every scale seen to overflow.
 
 The default stays bf16 LoRA, with `model.quantization = "none"`.
 The config refuses a mix that cannot work, such as bf16 together with fp16, or fp16 with a bf16 model.
