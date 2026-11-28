@@ -46,7 +46,7 @@ Without it the paraphrased set stays empty.
 | `template_test.jsonl` | 600 | Exact template prompts from test-split plans: 200 ResPlan, 250 Swiss Dwellings, 150 CubiCasa5K. Levels L0 to L4 in a 5 / 20 / 30 / 30 / 15 % mix. |
 | `template_val.jsonl` | 600 | The same recipe on val-split plans, for choosing a checkpoint only. |
 | `paraphrase_test.jsonl` | 200 | Template test prompts (L0 to L3) rewritten by DeepSeek, each passing both paraphrase checks. |
-| `behavior_test.jsonl` | 100 | 40 edits (not `new_plan`), 15 restarts (asking for what the current plan lacks), 20 contradictions, 25 unsupported asks. ResPlan gives 26 / 10 / 13 / 16 of them and Swiss Dwellings 14 / 5 / 7 / 9; CubiCasa5K gives none. |
+| `behavior_test.jsonl` | 100 | 40 edits (not `new_plan`), 15 restarts (asking for what the current plan lacks), 20 contradictions, 25 unsupported asks. ResPlan gives 26 / 10 / 13 / 16 of them and Swiss Dwellings 14 / 5 / 7 / 9; CubiCasa5K gives none. A source left out of the build, or with no test plans, gives no behavior rows, so the set is smaller. |
 | `handwritten_test.jsonl` | 0 | An empty slot for the captain's 60 prompts (below). |
 | `references.jsonl` | | The canonical source plan of every record id, with polygons. |
 | `reference_tables.json` | | Real link shares and room-count bands from the train plans, for two plausibility metrics. |

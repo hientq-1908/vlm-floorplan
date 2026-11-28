@@ -146,9 +146,12 @@ def build_sets(config: BuildConfig) -> dict[str, Any]:
         log(f"{name}: {len(rows[name])} prompts")
     rows["behavior_test"] = []
     for source, quotas in config.behavior_quotas.items():
+        if not behavior_plans.get(source):
+            log(f"behavior_test: no {source} test plans, so no {source} behavior rows")
+            continue
         rows["behavior_test"] += build_behavior_rows(
             source,
-            behavior_plans.get(source, []),
+            behavior_plans[source],
             streams,
             quotas,
             index.texts,

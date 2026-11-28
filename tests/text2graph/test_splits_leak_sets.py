@@ -136,6 +136,31 @@ def test_build_sets_writes_every_set_from_held_out_plans_only(tmp_path):
     assert json.loads((out / "manifest.json").read_text())["seed"] == config.seed
 
 
+def test_a_source_left_out_gives_no_behavior_rows_and_the_build_goes_on(tmp_path):
+    files = _files(tmp_path)
+    resplan = {"edit": 3, "restart": 2, "contradiction": 2, "unsupported": 2}
+    outs = []
+    for name, behavior_quotas in (
+        ("without", {"resplan": resplan}),
+        ("named", {"swiss_dwellings": dict(resplan), "resplan": resplan}),
+    ):
+        outs.append(tmp_path / name)
+        build_sets(
+            BuildConfig(
+                out_dir=outs[-1],
+                files=files,
+                quotas={"resplan": 12},
+                behavior_quotas=behavior_quotas,
+                log=lambda _message: None,
+            )
+        )
+    without, named = outs
+    for name in ("template_test", "template_val", "paraphrase_test", "behavior_test"):
+        assert (named / f"{name}.jsonl").exists()
+    assert {r.source for r in read_rows(named / "behavior_test.jsonl")} == {"resplan"}
+    assert _picks(named, "behavior_test", "resplan") == _picks(without, "behavior_test", "resplan")
+
+
 def test_the_same_seed_builds_the_same_sets(tmp_path):
     files = _files(tmp_path)
     texts = []
