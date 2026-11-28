@@ -251,12 +251,27 @@ A trial run of the shipped notebook with `MODE = "train"` and `train.logging_ste
 | Training time | 5,192 s for 1.43 M tokens, about 276 tokens per second with every overhead |
 | Output | adapter saved |
 
+A full run with the same settings then trained all 1,000 samples for one epoch, 63 optimizer steps:
+
+| Measure | Value |
+|---|---|
+| Gradient norm | finite on 62 of 63 steps; step 15 overflowed and was skipped |
+| Loss | finite on all 63 steps; the median over 7 steps fell from 0.65 (steps 1 to 7) to 0.21 (steps 57 to 63) |
+| Training time | 12,666 s (3.5 h) for 3.74 M tokens, about 295 tokens per second with every overhead |
+| Output | adapter saved, all weights finite |
+
+The loss rose to between 0.5 and 1.4 on steps 15, 30, 45 and 60, which also had the fewest tokens of their stretch.
+With `group_by_length`, these are probably the steps that hold the shortest samples of a length-sorted group (not tested).
+No evaluation was run on this adapter, so these figures show that training works, not how good the model is.
+
 #### The fp16 loss scale
 
 With torch's default starting scale of 65536, 20-step runs at batch 1 and batch 4 both overflowed on steps 1 to 4: the step was skipped, `grad_norm` was logged as NaN, and the scale halved down to 4096.
 At batch 1 one more step (the tenth) overflowed at 4096, and the ten steps after it were finite at 2048.
 The loss itself stayed finite throughout.
 This is why `train.fp16_init_scale` is 1024.
+A starting scale of 1024 does not rule out an overflow: in the full run, step 15 overflowed, the scale halved to 512 and the 48 steps after it were finite.
+One skipped step now and then is how the fp16 loss scaler adjusts; NaN gradient norms on many steps in a row are not.
 
 #### Why the batch stays at 1
 
@@ -343,7 +358,7 @@ They need the Qwen3.5-4B tokenizer files, downloaded once and cached.
 ## What was not run
 
 The bf16 path and ClearML were not run: the bf16 code was written on a machine with an 8 GB GPU and there was no ClearML server.
-The QLoRA path ran on the real 4B model, in smoke mode on a Kaggle T4 (above) and on that 8 GB GPU; a full run, a resume across two real sessions and the Colab path were not run.
+The QLoRA path ran on the real 4B model, in smoke mode on a Kaggle T4 (above) and on that 8 GB GPU; a full one-epoch run on the 1,000-sample test file also finished on a Kaggle T4, but a resume across two real sessions and the Colab path were not run.
 Check these on the first real run:
 
 - peak memory and speed at `max_length` 5120 (the smoke run measures both),
