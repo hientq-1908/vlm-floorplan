@@ -44,6 +44,29 @@ def test_cubicasa_undefined_classes_fall_back_to_the_printed_name() -> None:
     assert cubicasa_room_type("Space Undefined", None) == RoomType.UNKNOWN
 
 
+@pytest.mark.parametrize(
+    ("label", "expected"),
+    [
+        ("H", RoomType.BEDROOM),
+        ("AH", RoomType.BEDROOM),
+        ("TUPA", RoomType.LIVING),
+        ("MH", RoomType.BEDROOM),
+        ("K", RoomType.KITCHEN),
+        ("APUT", RoomType.OTHER),  # unreadable name: fallback is other, not unknown
+        ("", RoomType.OTHER),
+        (None, RoomType.OTHER),
+    ],
+)
+def test_cubicasa_generic_room_class_reads_the_printed_name(
+    label: str | None, expected: RoomType
+) -> None:
+    assert cubicasa_room_type("Space Room", label) == expected
+
+
+def test_cubicasa_specific_classes_ignore_the_printed_name_even_for_h() -> None:
+    assert cubicasa_room_type("Space Alcove", "H") == RoomType.OTHER
+
+
 def test_unseen_cubicasa_class_is_other_not_unknown() -> None:
     assert cubicasa_room_type("Space Observatory", None) == RoomType.OTHER
 

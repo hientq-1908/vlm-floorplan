@@ -64,7 +64,12 @@ CUBICASA_CLASS_TYPES: dict[str, RoomType] = {
 }
 
 # CubiCasa5K classes that carry no type: the room's printed name decides instead.
+# An unreadable name stays `unknown`.
 CUBICASA_UNLABELED_CLASSES = frozenset({"Undefined", "UserDefined"})
+
+# CubiCasa5K's generic "Room" class: the printed name decides when it is known,
+# otherwise the room is still a labeled room, so it falls back to `other`.
+CUBICASA_GENERIC_CLASSES = frozenset({"Room"})
 
 # Finnish room names and abbreviations as printed on CubiCasa5K plans.
 # A label is split into words ("MH/TYÖH" -> "MH", "TYÖH"); the first word found here wins.
@@ -80,6 +85,8 @@ FINNISH_WORD_TYPES: dict[str, RoomType] = {
     "RUOKALA": T.DINING,
     # bedroom
     "MH": T.BEDROOM, "MAKUUHUONE": T.BEDROOM, "MAKUUH": T.BEDROOM,
+    # "H" (huone, a room) and "AH" (asuinhuone, a habitable room) name a room in a dwelling
+    "H": T.BEDROOM, "AH": T.BEDROOM,
     # bathroom (all wet rooms)
     "KH": T.BATHROOM, "PH": T.BATHROOM, "WC": T.BATHROOM, "KPH": T.BATHROOM,
     "PSH": T.BATHROOM, "SH": T.BATHROOM, "PESUH": T.BATHROOM, "PESU": T.BATHROOM,
@@ -149,6 +156,9 @@ def cubicasa_room_type(space_class: str, label: str | None) -> RoomType:
     main = tokens[1]
     if main in CUBICASA_UNLABELED_CLASSES:
         return finnish_label_type(label)
+    if main in CUBICASA_GENERIC_CLASSES:
+        labeled = finnish_label_type(label)
+        return T.OTHER if labeled == T.UNKNOWN else labeled
     # A class we have never seen is still a labeled room, so it is "other", not "unknown".
     return CUBICASA_CLASS_TYPES.get(main, T.OTHER)
 
