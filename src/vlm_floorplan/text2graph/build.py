@@ -25,6 +25,7 @@ from vlm_floorplan.evaluation.plausibility import (
     plan_plausibility,
 )
 from vlm_floorplan.record import PlanRecord
+from vlm_floorplan.schema import FloorplanGraph
 from vlm_floorplan.text2graph.behavior import BEHAVIOR_QUOTAS, behavior_counts, build_behavior_rows
 from vlm_floorplan.text2graph.frame import unusable_reason
 from vlm_floorplan.text2graph.leak import LeakError, LeakIndex
@@ -61,7 +62,9 @@ class BuildConfig:
     files: SourceFiles
     seed: int = DEFAULT_SEED
     quotas: dict[str, int] = field(default_factory=lambda: dict(TEMPLATE_QUOTAS))
-    behavior_quotas: dict[str, int] = field(default_factory=lambda: dict(BEHAVIOR_QUOTAS))
+    behavior_quotas: dict[str, dict[str, int]] = field(
+        default_factory=lambda: {source: dict(q) for source, q in BEHAVIOR_QUOTAS.items()}
+    )
     paraphrase_target: int = PARAPHRASE_TARGET
     train_texts: list[str] = field(default_factory=list)
     teacher: Teacher | None = None
@@ -126,7 +129,7 @@ def build_sets(config: BuildConfig) -> dict[str, Any]:
     streams = Streams(config.seed)
     rows: dict[str, list[PromptRow]] = {}
     references: dict[str, PlanRecord] = {}
-    behavior_plans = []
+    behavior_plans: dict[str, list[tuple[str, str, FloorplanGraph]]] = {}
     for split, name in (("test", "template_test"), ("val", "template_val")):
         pools = held_out_candidates(read_records(paths), split, index, streams)
         log(f"{split}: candidates " + ", ".join(f"{s} {len(p)}" for s, p in pools.items()))
@@ -136,16 +139,21 @@ def build_sets(config: BuildConfig) -> dict[str, Any]:
                 references[candidate.record_id] = candidate.canon.record
         if split == "test":
             used = {r.record_id for r in rows[name]}
-            behavior_plans = [
-                (c.record_id, c.source, c.canon.record.graph)
-                for pool in pools.values()
-                for c in pool
-                if c.record_id not in used
-            ] or [(c.record_id, c.source, c.canon.record.graph) for p in pools.values() for c in p]
+            for source, pool in pools.items():
+                plans = [(c.record_id, c.source, c.canon.record.graph) for c in pool]
+                unused = [plan for plan in plans if plan[0] not in used]
+                behavior_plans[source] = unused or plans
         log(f"{name}: {len(rows[name])} prompts")
-    rows["behavior_test"] = build_behavior_rows(
-        behavior_plans, streams, config.behavior_quotas, index.texts
-    )
+    rows["behavior_test"] = []
+    for source, quotas in config.behavior_quotas.items():
+        rows["behavior_test"] += build_behavior_rows(
+            source,
+            behavior_plans.get(source, []),
+            streams,
+            quotas,
+            index.texts,
+            offset=len(rows["behavior_test"]),
+        )
     rows["paraphrase_test"], teacher_stats = [], {"skipped": "no teacher given"}
     if config.teacher is not None:
         rows["paraphrase_test"], teacher_stats = build_paraphrase_set(

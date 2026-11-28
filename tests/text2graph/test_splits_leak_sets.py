@@ -118,7 +118,9 @@ def test_build_sets_writes_every_set_from_held_out_plans_only(tmp_path):
         out_dir=out,
         files=_files(tmp_path),
         quotas={"resplan": 12},
-        behavior_quotas={"edit": 3, "restart": 2, "contradiction": 2, "unsupported": 2},
+        behavior_quotas={
+            "resplan": {"edit": 3, "restart": 2, "contradiction": 2, "unsupported": 2}
+        },
         log=lambda _message: None,
     )
     manifest = build_sets(config)
@@ -142,7 +144,9 @@ def test_the_same_seed_builds_the_same_sets(tmp_path):
             out_dir=tmp_path / name,
             files=files,
             quotas={"resplan": 10},
-            behavior_quotas={"edit": 3, "restart": 1, "contradiction": 1, "unsupported": 1},
+            behavior_quotas={
+                "resplan": {"edit": 3, "restart": 1, "contradiction": 1, "unsupported": 1}
+            },
             log=lambda _message: None,
         )
         build_sets(config)
@@ -163,7 +167,10 @@ def _build_with_cubicasa(tmp_path: Path, name: str, cubicasa_seeds: range):
         out_dir=out,
         files=SourceFiles(resplan_dir=files.resplan_dir, cubicasa_file=path),
         quotas={"resplan": 12, "cubicasa5k": 60},
-        behavior_quotas={"edit": 3, "restart": 2, "contradiction": 2, "unsupported": 2},
+        behavior_quotas={
+            "cubicasa5k": {"edit": 1, "restart": 2, "contradiction": 2, "unsupported": 2},
+            "resplan": {"edit": 3, "restart": 2, "contradiction": 2, "unsupported": 2},
+        },
         log=lambda _message: None,
     )
     build_sets(config)
@@ -188,8 +195,11 @@ def test_a_change_to_one_sources_pool_leaves_the_other_sources_sets_unchanged(tm
     for name in ("template_test", "template_val"):
         assert _picks(small, name, "resplan")
         assert _picks(small, name, "resplan") == _picks(large, name, "resplan")
+    assert {p[0] for p in _picks(small, "behavior_test", "cubicasa5k")} != {
+        p[0] for p in _picks(large, "behavior_test", "cubicasa5k")
+    }
     assert _picks(small, "behavior_test", "resplan")
-    assert read_rows(small / "behavior_test.jsonl") == read_rows(large / "behavior_test.jsonl")
+    assert _picks(small, "behavior_test", "resplan") == _picks(large, "behavior_test", "resplan")
 
 
 def test_a_prompt_text_equal_to_a_train_prompt_is_drawn_again():
