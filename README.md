@@ -27,7 +27,8 @@ It also holds the code for milestone M2, the zero-shot baseline: evaluation metr
 The GPU run itself has not happened yet.
 
 The SFT stage 1 training code (text to graph, LoRA on Qwen3.5-4B) is in `training/` with its settings in `configs/sft_stage1.toml`, see `docs/sft-training.md`.
-It has a smoke mode and a ClearML launcher, and has not been run on the real model yet.
+It has a smoke mode and a ClearML launcher.
+On the real model only the free-tier QLoRA variant has run, on a Kaggle T4 (see "What was not run" in that document).
 
 Planned next: the zero-shot baseline run, perception fine-tuning, the editing agent, the app and retrieval.
 See the milestone list in `docs/architecture.md`.
