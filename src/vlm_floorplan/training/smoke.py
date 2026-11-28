@@ -10,9 +10,10 @@ slower. Smoke mode runs a few optimizer steps on a small slice and writes `smoke
 - `projected_hours_per_epoch`: what one epoch over the full set would take at the measured speed.
 - `losses` and `loss_finite`: the logged loss of every step, and whether all of them are finite
   numbers. fp16 can overflow where bf16 does not, so this is the check that the precision works.
-- `grad_norms` and `steps_with_finite_grad`: fp16 starts with a large loss scale and the trainer
-  skips (logs `nan`) every step whose gradients overflow until the scale has come down, normally
-  the first 3 to 5 steps. A smoke run needs enough steps to get past them.
+- `grad_norms` and `steps_with_finite_grad`: under fp16 the trainer skips
+  (logs `nan`) every step whose gradients overflow and halves the loss scale. From
+  `train.fp16_init_scale` none was skipped in the T4 trial, but a smoke run takes a few steps so
+  that one skipped step still leaves finite ones.
 
 The slice always contains the longest kept sample, so the memory figure is the worst case.
 """
