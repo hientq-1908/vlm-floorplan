@@ -63,6 +63,13 @@ def test_cubicasa_generic_room_class_reads_the_printed_name(
     assert cubicasa_room_type("Space Room", label) == expected
 
 
+@pytest.mark.parametrize("label", ["SIIV.H", "LÄMM.H", "MONIK.H"])
+def test_dotted_short_forms_ending_in_h_are_not_bedrooms(label: str) -> None:
+    # "X.H" abbreviates a compound "X-huone" (cleaning room, heating room, ...), not a room.
+    assert cubicasa_room_type("Space Undefined", label) != RoomType.BEDROOM
+    assert cubicasa_room_type("Space Room", label) != RoomType.BEDROOM
+
+
 def test_cubicasa_specific_classes_ignore_the_printed_name_even_for_h() -> None:
     assert cubicasa_room_type("Space Alcove", "H") == RoomType.OTHER
 
