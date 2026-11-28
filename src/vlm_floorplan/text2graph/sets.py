@@ -23,6 +23,7 @@ from vlm_floorplan.text2graph.leak import normalize_text
 from vlm_floorplan.text2graph.paraphrase import Teacher
 from vlm_floorplan.text2graph.pools import Candidate
 from vlm_floorplan.text2graph.rows import PromptRow, empty_start
+from vlm_floorplan.text2graph.streams import Streams
 from vlm_floorplan.text2graph.templates import choose_kind, render_text
 from vlm_floorplan.text2graph.words import slot_check
 
@@ -103,23 +104,29 @@ def _take(pool: Sequence[Candidate], quota: int, per_site_cap: int) -> list[Cand
 def build_template_set(
     set_name: str,
     pools: dict[str, list[Candidate]],
-    rng: random.Random,
+    streams: Streams,
     quotas: dict[str, int] | None = None,
     forbidden: Collection[str] = (),
 ) -> list[PromptRow]:
-    """The template prompts of one split. A source short of plans simply gives fewer prompts."""
+    """The template prompts of one split. A source short of plans simply gives fewer prompts.
+
+    Each source draws from streams of its own, and each prompt from a stream of its plan, so the
+    plans and texts of a source do not depend on the pools of the other sources.
+    """
     quotas = quotas or TEMPLATE_QUOTAS
     rows: list[PromptRow] = []
     for source, quota in quotas.items():
         pool = pools.get(source, [])
         if source == "cubicasa5k":
-            rows += _multi_level(set_name, pool, quota, len(rows), rng, forbidden)
+            rows += _multi_level(set_name, pool, quota, len(rows), streams, forbidden)
             continue
         cap = 1
         while len(_take(pool, quota, cap)) < min(quota, len(pool)):
             cap += 1
         plans = _take(pool, quota, cap)
-        for plan, level in zip(plans, level_sequence(len(plans), rng), strict=True):
+        levels = level_sequence(len(plans), streams.rng(set_name, source, "levels"))
+        for plan, level in zip(plans, levels, strict=True):
+            rng = streams.rng(set_name, source, "prompt", plan.record_id)
             row = make_prompt(plan, level, set_name, len(rows), rng, forbidden)
             if row:
                 rows.append(row)
@@ -131,7 +138,7 @@ def _multi_level(
     pool: Sequence[Candidate],
     quota: int,
     offset: int,
-    rng: random.Random,
+    streams: Streams,
     forbidden: Collection[str] = (),
 ) -> list[PromptRow]:
     """Few plans, several prompts each at different levels, until the quota is met."""
@@ -141,6 +148,7 @@ def _multi_level(
     rows: list[PromptRow] = []
     for index, plan in enumerate(pool):
         wanted = min(4, base + (1 if index < extra else 0))
+        rng = streams.rng(set_name, plan.source, "prompt", plan.record_id)
         for level in rng.sample([1, 2, 3, 4], wanted):
             row = make_prompt(plan, level, set_name, offset + len(rows), rng, forbidden)
             if row:

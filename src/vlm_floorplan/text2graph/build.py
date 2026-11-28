@@ -11,7 +11,6 @@ The directory holds the five set files, `references.jsonl`, `reference_tables.js
 from __future__ import annotations
 
 import json
-import random
 import subprocess
 from collections import Counter
 from collections.abc import Callable, Iterable
@@ -26,6 +25,7 @@ from vlm_floorplan.evaluation.plausibility import (
     plan_plausibility,
 )
 from vlm_floorplan.record import PlanRecord
+from vlm_floorplan.schema import FloorplanGraph
 from vlm_floorplan.text2graph.behavior import BEHAVIOR_QUOTAS, behavior_counts, build_behavior_rows
 from vlm_floorplan.text2graph.frame import unusable_reason
 from vlm_floorplan.text2graph.leak import LeakError, LeakIndex
@@ -50,6 +50,7 @@ from vlm_floorplan.text2graph.sets import (
     build_template_set,
 )
 from vlm_floorplan.text2graph.splits import split_of
+from vlm_floorplan.text2graph.streams import Streams
 
 DEFAULT_SEED = 20261122
 HANDWRITTEN_NOTE = "empty slot: the captain writes 60 prompts (see docs/text2graph-evaluation.md)"
@@ -61,7 +62,9 @@ class BuildConfig:
     files: SourceFiles
     seed: int = DEFAULT_SEED
     quotas: dict[str, int] = field(default_factory=lambda: dict(TEMPLATE_QUOTAS))
-    behavior_quotas: dict[str, int] = field(default_factory=lambda: dict(BEHAVIOR_QUOTAS))
+    behavior_quotas: dict[str, dict[str, int]] = field(
+        default_factory=lambda: {source: dict(q) for source, q in BEHAVIOR_QUOTAS.items()}
+    )
     paraphrase_target: int = PARAPHRASE_TARGET
     train_texts: list[str] = field(default_factory=list)
     teacher: Teacher | None = None
@@ -123,35 +126,43 @@ def build_sets(config: BuildConfig) -> dict[str, Any]:
     log(f"indexing train plans from {len(paths)} files")
     index = build_leak_index(read_records(paths), config.train_texts)
     log(f"train index: {len(index.ids)} plans, {len(index.structures)} structures")
-    rng = random.Random(config.seed)
+    streams = Streams(config.seed)
     rows: dict[str, list[PromptRow]] = {}
     references: dict[str, PlanRecord] = {}
-    behavior_plans = []
+    behavior_plans: dict[str, list[tuple[str, str, FloorplanGraph]]] = {}
     for split, name in (("test", "template_test"), ("val", "template_val")):
-        pools = held_out_candidates(read_records(paths), split, index, rng)
+        pools = held_out_candidates(read_records(paths), split, index, streams)
         log(f"{split}: candidates " + ", ".join(f"{s} {len(p)}" for s, p in pools.items()))
-        rows[name] = build_template_set(name, pools, rng, config.quotas, index.texts)
+        rows[name] = build_template_set(name, pools, streams, config.quotas, index.texts)
         for pool in pools.values():
             for candidate in pool:
                 references[candidate.record_id] = candidate.canon.record
         if split == "test":
             used = {r.record_id for r in rows[name]}
-            behavior_plans = [
-                (c.record_id, c.source, c.canon.record.graph)
-                for pool in pools.values()
-                for c in pool
-                if c.record_id not in used
-            ] or [(c.record_id, c.source, c.canon.record.graph) for p in pools.values() for c in p]
+            for source, pool in pools.items():
+                plans = [(c.record_id, c.source, c.canon.record.graph) for c in pool]
+                unused = [plan for plan in plans if plan[0] not in used]
+                behavior_plans[source] = unused or plans
         log(f"{name}: {len(rows[name])} prompts")
-    rows["behavior_test"] = build_behavior_rows(
-        behavior_plans, rng, config.behavior_quotas, index.texts
-    )
+    rows["behavior_test"] = []
+    for source, quotas in config.behavior_quotas.items():
+        if not behavior_plans.get(source):
+            log(f"behavior_test: no {source} test plans, so no {source} behavior rows")
+            continue
+        rows["behavior_test"] += build_behavior_rows(
+            source,
+            behavior_plans[source],
+            streams,
+            quotas,
+            index.texts,
+            offset=len(rows["behavior_test"]),
+        )
     rows["paraphrase_test"], teacher_stats = [], {"skipped": "no teacher given"}
     if config.teacher is not None:
         rows["paraphrase_test"], teacher_stats = build_paraphrase_set(
             rows["template_test"],
             config.teacher,
-            rng,
+            streams.rng("paraphrase_test", "paraphrase"),
             config.paraphrase_target,
             index.texts,
             lambda ok, sent: log(f"paraphrase: {ok} accepted of {sent} sent"),

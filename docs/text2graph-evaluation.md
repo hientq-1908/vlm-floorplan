@@ -46,7 +46,7 @@ Without it the paraphrased set stays empty.
 | `template_test.jsonl` | 600 | Exact template prompts from test-split plans: 200 ResPlan, 250 Swiss Dwellings, 150 CubiCasa5K. Levels L0 to L4 in a 5 / 20 / 30 / 30 / 15 % mix. |
 | `template_val.jsonl` | 600 | The same recipe on val-split plans, for choosing a checkpoint only. |
 | `paraphrase_test.jsonl` | 200 | Template test prompts (L0 to L3) rewritten by DeepSeek, each passing both paraphrase checks. |
-| `behavior_test.jsonl` | 100 | 40 edits (not `new_plan`), 15 restarts (asking for what the current plan lacks), 20 contradictions, 25 unsupported asks. |
+| `behavior_test.jsonl` | 100 | 40 edits (not `new_plan`), 15 restarts (asking for what the current plan lacks), 20 contradictions, 25 unsupported asks. ResPlan gives 26 / 10 / 13 / 16 of them and Swiss Dwellings 14 / 5 / 7 / 9; CubiCasa5K gives none. A source left out of the build, or with no test plans, gives no behavior rows, so the set is smaller. |
 | `handwritten_test.jsonl` | 0 | An empty slot for the captain's 60 prompts (below). |
 | `references.jsonl` | | The canonical source plan of every record id, with polygons. |
 | `reference_tables.json` | | Real link shares and room-count bands from the train plans, for two plausibility metrics. |
@@ -74,6 +74,12 @@ The structure rule is strict on purpose, so the test set measures generalization
 Fewer CubiCasa5K test plans survive than the 398 in its official test split (every plan must also be one floor, 3 to 16 rooms, fully typed, with no isolated room): 57 are usable and 41 of those pass the leak check, so that source gives up to four levels per plan and may still fall short of 150 prompts.
 The printed room name decides the type of a CubiCasa5K `Room`, `Undefined` and `UserDefined` space, so a change to the Finnish name table changes which plans are usable: rebuild the processed data and these sets after one.
 The manifest has the real counts.
+
+Every draw of the build comes from its own random stream, derived from the seed and string keys (the set, the source, the purpose, and for a prompt its plan id; `text2graph/streams.py`).
+So a change to one source's candidate pool, such as the Finnish name table above, leaves the other sources' selected plans and prompt texts as they were.
+The behavior test is built per source too, from the test plans of that source no template prompt used (all its test plans when it has none left), and a restart asks for another plan of the same source.
+Only the paraphrase test stays shared: it rewrites template test prompts of every source, chosen by one stream.
+Prompt ids (`T0000`, `B000`, ...) are numbered across sources in order, so they do shift when an earlier source gives more or fewer prompts.
 
 ### The canonical frame
 

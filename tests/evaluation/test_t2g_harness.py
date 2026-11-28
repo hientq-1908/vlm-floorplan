@@ -35,7 +35,9 @@ def sets(tmp_path_factory) -> Path:
             out_dir=out,
             files=SourceFiles(resplan_dir=directory),
             quotas={"resplan": 30},
-            behavior_quotas={"edit": 6, "restart": 3, "contradiction": 3, "unsupported": 3},
+            behavior_quotas={
+                "resplan": {"edit": 6, "restart": 3, "contradiction": 3, "unsupported": 3}
+            },
             log=lambda _message: None,
         )
     )

@@ -7,7 +7,6 @@ pass the leak index: their structure is not one a train plan has.
 
 from __future__ import annotations
 
-import random
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,6 +23,7 @@ from vlm_floorplan.text2graph.frame import (
 )
 from vlm_floorplan.text2graph.leak import LeakIndex, structure_hash
 from vlm_floorplan.text2graph.splits import split_of
+from vlm_floorplan.text2graph.streams import Streams
 
 SOURCES = ("resplan", "swiss_dwellings", "cubicasa5k")
 
@@ -84,10 +84,14 @@ def make_candidate(record: PlanRecord) -> Candidate | None:
 
 
 def held_out_candidates(
-    records: Iterable[PlanRecord], split: str, index: LeakIndex, rng: random.Random
+    records: Iterable[PlanRecord], split: str, index: LeakIndex, streams: Streams
 ) -> dict[str, list[Candidate]]:
-    """Candidates of one split per source, shuffled, one per structure, none seen in train."""
-    seen: set[str] = set()
+    """Candidates of one split per source, shuffled, one per structure, none seen in train.
+
+    Structures are deduplicated within a source and each source is shuffled by a stream of its
+    own, so the pool of a source does not depend on the records of the others.
+    """
+    seen: dict[str, set[str]] = {source: set() for source in SOURCES}
     pools: dict[str, list[Candidate]] = {source: [] for source in SOURCES}
     for record in records:
         if split_of(record) != split or record.source not in pools:
@@ -95,13 +99,13 @@ def held_out_candidates(
         if index.violations(record.id, record.graph):
             continue
         structure = structure_hash(record.graph)
-        if structure in seen:
+        if structure in seen[record.source]:
             continue
         candidate = make_candidate(record)
         if candidate is not None:
-            seen.add(structure)
+            seen[record.source].add(structure)
             pools[record.source].append(candidate)
-    for pool in pools.values():
+    for source, pool in pools.items():
         pool.sort(key=lambda c: c.record_id)
-        rng.shuffle(pool)
+        streams.rng(split, source, "pool").shuffle(pool)
     return pools

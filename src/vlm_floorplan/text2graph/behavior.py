@@ -23,10 +23,16 @@ from vlm_floorplan.requirements import all_met, derive_requirements, requirement
 from vlm_floorplan.schema import FloorplanGraph, LinkKind, Room, RoomType
 from vlm_floorplan.text2graph.leak import normalize_text
 from vlm_floorplan.text2graph.rows import PromptRow, empty_start
+from vlm_floorplan.text2graph.streams import Streams
 from vlm_floorplan.text2graph.templates import choose_kind, render_text
 from vlm_floorplan.text2graph.words import NOUNS, NUMBER_WORDS
 
-BEHAVIOR_QUOTAS = {"edit": 40, "restart": 15, "contradiction": 20, "unsupported": 25}
+SET_NAME = "behavior_test"
+BEHAVIOR_QUOTAS = {
+    "resplan": {"edit": 26, "restart": 10, "contradiction": 13, "unsupported": 16},
+    "swiss_dwellings": {"edit": 14, "restart": 5, "contradiction": 7, "unsupported": 9},
+}
+"""Rows of each kind per source; a source not named here gives no behavior rows."""
 EDIT_KINDS = ("door", "open", "add")
 RESTART_TRIES = 10
 _OPENABLE = {RoomType.LIVING, RoomType.KITCHEN, RoomType.DINING, RoomType.ENTRY}
@@ -217,20 +223,26 @@ def unsupported_row(
 
 
 def build_behavior_rows(
+    source: str,
     plans: list[tuple[str, str, FloorplanGraph]],
-    rng: random.Random,
-    quotas: dict[str, int] | None = None,
+    streams: Streams,
+    quotas: dict[str, int],
     forbidden: Collection[str] = (),
+    offset: int = 0,
 ) -> list[PromptRow]:
-    """The behavior test set from a pool of (record id, source, canonical graph) plans.
+    """The behavior rows of one source from its (record id, source, canonical graph) plans.
 
-    Plans are used round-robin; an edit is retried on later plans when a plan has no place for
-    it. A prompt whose text equals one in `forbidden` (train prompts) is drawn again.
-    Raises `ValueError` when the pool cannot fill a quota.
+    Plans are used round-robin in an order set by their record ids and the seed, so a plan added
+    to the pool does not reorder the others; an edit is retried on later plans when a plan has
+    no place for it, and a restart asks for another plan of the same source. Every draw comes
+    from a stream keyed by the source and the row it builds, so the rows of a source do not
+    depend on the plans of the others. A prompt whose text equals one in `forbidden` (train
+    prompts) is drawn again. Row ids are numbered from `offset`.
+    Raises `ValueError` when the plans cannot fill a quota.
     """
-    quotas = quotas or BEHAVIOR_QUOTAS
-    plans = list(plans)
-    rng.shuffle(plans)
+    if not plans and any(quotas.values()):
+        raise ValueError(f"no {source} plan is left for the behavior test")
+    plans = sorted(plans, key=lambda plan: streams.sort_key(SET_NAME, source, "order", plan[0]))
     rows: list[PromptRow] = []
     cursor = 0
 
@@ -244,28 +256,48 @@ def build_behavior_rows(
         kind = EDIT_KINDS[number % len(EDIT_KINDS)]
         for attempt in range(len(plans)):
             index = (cursor + attempt) % len(plans)
-            record_id, source, graph = plans[index]
-            row = edit_row(len(rows), record_id, source, graph, kind, rng)
+            record_id, _source, graph = plans[index]
+            rng = streams.rng(SET_NAME, source, "edit", str(number), record_id)
+            row = edit_row(offset + len(rows), record_id, source, graph, kind, rng)
             if row and normalize_text(row.text) not in forbidden:
                 rows.append(row)
                 cursor = index + 1
                 break
         else:
-            raise ValueError(f"no plan in the pool can take an edit of kind {kind}")
+            raise ValueError(f"no {source} plan can take an edit of kind {kind}")
 
-    def fresh(make: Callable[[str, str, FloorplanGraph], PromptRow | None]) -> PromptRow:
-        for _attempt in range(50):
-            row = make(*next_plan())
+    def fresh(purpose: str, number: int, make: Callable[..., PromptRow | None]) -> PromptRow:
+        for attempt in range(50):
+            rng = streams.rng(SET_NAME, source, purpose, str(number), str(attempt))
+            row = make(*next_plan(), rng)
             if row and normalize_text(row.text) not in forbidden:
                 return row
         raise ValueError("no drawn behavior prompt is usable and differs from every train prompt")
 
-    for _ in range(quotas["restart"]):
-        rows.append(fresh(lambda _i, _s, g: restart_row(len(rows), g, rng.choice(plans), rng)))
-    for _ in range(quotas["contradiction"]):
-        rows.append(fresh(lambda i, s, g: contradiction_row(len(rows), i, s, g, rng)))
-    for _ in range(quotas["unsupported"]):
-        rows.append(fresh(lambda i, s, g: unsupported_row(len(rows), i, s, g, rng)))
+    for number in range(quotas["restart"]):
+        rows.append(
+            fresh(
+                "restart",
+                number,
+                lambda _i, _s, g, rng: restart_row(offset + len(rows), g, rng.choice(plans), rng),
+            )
+        )
+    for number in range(quotas["contradiction"]):
+        rows.append(
+            fresh(
+                "contradiction",
+                number,
+                lambda i, s, g, rng: contradiction_row(offset + len(rows), i, s, g, rng),
+            )
+        )
+    for number in range(quotas["unsupported"]):
+        rows.append(
+            fresh(
+                "unsupported",
+                number,
+                lambda i, s, g, rng: unsupported_row(offset + len(rows), i, s, g, rng),
+            )
+        )
     return rows
 
 
