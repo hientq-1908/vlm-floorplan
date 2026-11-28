@@ -102,6 +102,19 @@ def make_sft_config(config: TrainConfig, run_dir: Path, *, smoke: bool) -> Any:
     )
 
 
+def set_initial_loss_scale(accelerator: Any, scale: float) -> None:
+    """Replace the fp16 loss scaler with one that starts at `scale`.
+
+    `Trainer` offers no setting for it. This must run before `train()`, which hands the scaler to
+    the optimizer; a resumed run then loads the scaler state saved in its snapshot.
+    """
+    import torch
+
+    if accelerator.scaler is None:
+        raise RuntimeError("train.fp16 is set, but the trainer made no fp16 loss scaler")
+    accelerator.scaler = torch.amp.GradScaler(accelerator.device.type, init_scale=scale)
+
+
 def _write_json(path: Path, data: Any) -> None:
     path.write_text(json.dumps(data, indent=2, default=str) + "\n")
 
@@ -151,7 +164,8 @@ def run_training(
     _write_json(run_dir / CONFIG_FILE, settings)
     _write_json(run_dir / DATA_REPORT_FILE, report.to_json())
     if smoke:
-        count = config.smoke.steps * config.train.gradient_accumulation_steps
+        t = config.train
+        count = config.smoke.steps * t.gradient_accumulation_steps * t.per_device_batch_size
         items = select_smoke_slice(items, count)
         log.info("smoke mode: %d samples, %d optimizer steps", len(items), config.smoke.steps)
     longest = max(item.length for item in items)
@@ -177,6 +191,7 @@ def run_training(
     )
     if config.train.fp16:
         log.info("moved %d LoRA tensors to fp32", upcast_trainable_to_fp32(trainer.model))
+        set_initial_loss_scale(trainer.accelerator, config.train.fp16_init_scale)
     trainable = check_trainable(trainer.model)
     log.info("trainable parameters: %s", f"{trainable:,}")
 

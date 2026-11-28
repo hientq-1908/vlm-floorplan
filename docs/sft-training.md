@@ -98,6 +98,9 @@ On a 16 GB GPU without bf16 (T4, Kaggle, Colab free) the same recipe runs as QLo
 - `model.quantization = "nf4"`: the base weights load 4-bit (bitsandbytes, double quantization), and the vision tower, `in_proj_a` and `in_proj_b` stay 16-bit,
 - `model.dtype = "float16"` and `train.fp16 = true` instead of bf16, so the compute is fp16 with a loss scaler,
 - the LoRA weights stay fp32 (TRL would otherwise cast them to bf16), and `check_trainable` runs unchanged, so the vision tower is still frozen and only LoRA weights train.
+- the fp16 loss scaler starts at `train.fp16_init_scale = 1024` instead of torch's 65536.
+  From 65536, every one of the first 4 optimizer steps overflowed on a T4 and was skipped (`grad_norm` NaN) while the scale halved down to 4096, and one more step overflowed later at 4096.
+  1024 is below every scale seen to overflow.
 
 The default stays bf16 LoRA, with `model.quantization = "none"`.
 The config refuses a mix that cannot work, such as bf16 together with fp16, or fp16 with a bf16 model.
@@ -147,7 +150,7 @@ uv run --group ml python scripts/sft_generate.py \
 
 On a GPU with 16 GB or without bf16, add `--qlora` to the smoke and full commands (see "Model and LoRA"; the Kaggle section below uses it).
 
-Smoke mode trains on steps x accumulation samples: the longest kept sample plus the first ones.
+Smoke mode trains on steps x accumulation x per-device batch samples: the longest kept sample plus the first ones.
 The longest sample makes the memory figure the worst case.
 `smoke.json` holds:
 
@@ -230,34 +233,70 @@ A T4 has 16 GB and no bf16, so the notebook trains the QLoRA variant described u
 Everything else is the repository's recipe: rank 32, the same target modules, `max_length` 5120, batch 1 with 16 accumulation steps, gradient checkpointing, no truncation, assistant-only loss.
 
 QLoRA is a quality caveat, not a free lunch.
-The base weights are rounded to 4 bits, so the adapter learns against a slightly different base than the bf16 one, and fp16 has a narrower range than bf16 (the loss scaler skips the first few steps).
+The base weights are rounded to 4 bits, so the adapter learns against a slightly different base than the bf16 one, and fp16 has a narrower range than bf16 (a loss scaler skips any step whose gradients overflow).
 The adapter loads on the bf16 base for evaluation, but it was trained against the 4-bit one.
 Treat a QLoRA adapter as a good first result and a way to iterate on data, and compare it with a bf16 run on the held-out sets before relying on it.
-The smoke run below shows a sane loss, not that the final quality matches bf16.
+The runs below show a sane loss, not that the final quality matches bf16.
 
 ### Measured on Kaggle
 
-One smoke run on a Kaggle `Tesla T4` (2 x T4 machine, only GPU 0 is used), 8 optimizer steps (128 samples, the longest one included) on a test file of 1,000 samples, `max_length` 5120:
+All figures are from a Kaggle `Tesla T4` (2 x T4 machine, only GPU 0 is used, 14.56 GiB), QLoRA with fp16, fast kernels (flash-linear-attention and causal-conv1d), `max_length` 5120, on samples from a test file of 1,000 samples (3.74 M tokens).
+
+A trial run of the shipped notebook with `MODE = "train"` and `train.logging_steps=1` trained 384 of those samples for 24 optimizer steps at batch 1 with 16 accumulation steps:
 
 | Measure | Value |
 |---|---|
-| Precision | QLoRA, 4-bit weights, fp16 |
-| Fast linear-attention kernels | yes (flash-linear-attention and causal-conv1d) |
-| Tokens per second | 305 (non-padding tokens, after the first step) |
-| Peak GPU memory | 6.31 GiB allocated, 6.70 GiB reserved of 14.56 GiB |
-| Loss | finite on all 8 steps, 0.87 to 0.73 |
-| Gradient norm | NaN on the first 4 steps (fp16 loss scaler settling), finite on the next 4 |
-| Projected time for one epoch | 3.4 h over the test file's 3.74 M tokens, so about 0.9 h per million tokens |
+| Gradient norm | finite on all 24 steps, none skipped |
+| Loss | 0.86 on step 1, 0.19 to 0.46 over the last 7 steps (it varies with the samples in a step) |
+| Training time | 5,192 s for 1.43 M tokens, about 276 tokens per second with every overhead |
+| Output | adapter saved |
 
-For a file of that size one epoch is about 11 % of the weekly 30 GPU hours and fits in one session, so a few epochs fit in a week.
+A full run with the same settings then trained all 1,000 samples for one epoch, 63 optimizer steps:
+
+| Measure | Value |
+|---|---|
+| Gradient norm | finite on 62 of 63 steps; step 15 overflowed and was skipped |
+| Loss | finite on all 63 steps; the median over 7 steps fell from 0.65 (steps 1 to 7) to 0.21 (steps 57 to 63) |
+| Training time | 12,666 s (3.5 h) for 3.74 M tokens, about 295 tokens per second with every overhead |
+| Output | adapter saved, all weights finite |
+
+The loss rose to between 0.5 and 1.4 on steps 15, 30, 45 and 60, which also had the fewest tokens of their stretch.
+With `group_by_length`, these are probably the steps that hold the shortest samples of a length-sorted group (not tested).
+No evaluation was run on this adapter, so these figures show that training works, not how good the model is.
+
+#### The fp16 loss scale
+
+With torch's default starting scale of 65536, 20-step runs at batch 1 and batch 4 both overflowed on steps 1 to 4: the step was skipped, `grad_norm` was logged as NaN, and the scale halved down to 4096.
+At batch 1 one more step (the tenth) overflowed at 4096, and the ten steps after it were finite at 2048.
+The loss itself stayed finite throughout.
+This is why `train.fp16_init_scale` is 1024.
+A starting scale of 1024 does not rule out an overflow: in the full run, step 15 overflowed, the scale halved to 512 and the 48 steps after it were finite.
+One skipped step now and then is how the fp16 loss scaler adjusts; NaN gradient norms on many steps in a row are not.
+
+#### Why the batch stays at 1
+
+Each setting keeps the effective batch at 16.
+Speed is non-padding tokens per second on real samples after the first step; memory is the peak reserved on a batch made only of one of the longest samples (5,080 tokens).
+
+| Per-device batch x accumulation | Tokens per second, 6 steps | Tokens per second, 20 steps | Peak reserved memory |
+|---|---|---|---|
+| 1 x 16 | 296 | 288 | 6.6 GiB |
+| 2 x 8 | 272 | not run | 8.9 GiB |
+| 4 x 4 | 256 | 262 | 13.4 GiB (13.6 GiB on real samples) |
+| 8 x 2 | out of memory | not run | out of memory on real samples |
+
+A larger per-device batch uses more of the card but trains about 8 to 14 % slower, so the free-tier profile keeps batch 1 with 16 accumulation steps.
+A likely reason, not tested, is that one long sample already keeps the T4's compute busy.
+These runs used the old starting scale of 65536; a skipped step still runs the forward and backward pass, so it does not change the speed.
+
+At about 290 tokens per second one epoch over the test file takes about 3.6 h, about 12 % of the weekly 30 GPU hours, and fits in one session.
 The notebook prints this projection for your own file at the end of every smoke run.
-For comparison, the bf16 LoRA run on a 24 GB A10G measured 449 tokens per second, which is about 2.3 h for the same number of tokens, so the T4 is roughly a third slower.
-The memory is far below the card, so the longest sample fits with room to spare.
+For comparison, the bf16 LoRA run on a 24 GB A10G measured 449 tokens per second, which is about 2.3 h for the same number of tokens.
 
 Installing `flash-linear-attention` is quick, but `causal-conv1d` compiles CUDA code and took about 25 minutes on Kaggle, in every session.
 Set `BUILD_CAUSAL_CONV1D = False` in the first cell to skip it and use the torch path for the convolution (not measured).
 If neither kernel installs, the notebook says so and continues on the slow path, which is slower.
-Only one smoke run was measured, so read the figures as one sample, not a benchmark.
+Each setting was measured once or twice, so read the figures as samples, not a benchmark.
 
 ### Steps
 
@@ -319,7 +358,7 @@ They need the Qwen3.5-4B tokenizer files, downloaded once and cached.
 ## What was not run
 
 The bf16 path and ClearML were not run: the bf16 code was written on a machine with an 8 GB GPU and there was no ClearML server.
-The QLoRA path ran on the real 4B model, in smoke mode on a Kaggle T4 (above) and on that 8 GB GPU; a full run, a resume across two real sessions and the Colab path were not run.
+The QLoRA path ran on the real 4B model, in smoke mode on a Kaggle T4 (above) and on that 8 GB GPU; a full one-epoch run on the 1,000-sample test file also finished on a Kaggle T4, but a resume across two real sessions and the Colab path were not run.
 Check these on the first real run:
 
 - peak memory and speed at `max_length` 5120 (the smoke run measures both),

@@ -42,6 +42,9 @@ gradient_checkpointing = true
 bf16 = true
 # fp16 is for GPUs without bf16 (T4): needs model.dtype = "float16" and bf16 = false.
 fp16 = false
+# fp16 only: the loss scale training starts at. torch's default of 65536 overflows this model, which
+# throws away the first 4 or more optimizer steps (grad_norm nan) while the scale halves.
+fp16_init_scale = 1024.0
 # Samples of similar length share a batch (no packing in v1).
 group_by_length = true
 logging_steps = 10
@@ -57,5 +60,5 @@ time_limit_hours = 0.0
 seed = 42
 
 [smoke]
-# Smoke mode runs this many optimizer steps on a slice of steps x gradient_accumulation_steps samples.
+# Smoke mode runs this many optimizer steps on a slice of steps x gradient_accumulation_steps x per_device_batch_size samples.
 steps = 4

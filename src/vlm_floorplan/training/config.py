@@ -73,6 +73,8 @@ class TrainSettings(_Section):
     gradient_checkpointing: bool
     bf16: bool
     fp16: bool
+    fp16_init_scale: float = Field(gt=0)
+    """The fp16 loss scaler's starting scale; unused without `fp16`."""
     group_by_length: bool
     logging_steps: int = Field(gt=0)
     report_to: str

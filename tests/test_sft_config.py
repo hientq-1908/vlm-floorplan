@@ -45,6 +45,7 @@ def test_qlora_overrides_select_4bit_weights_and_fp16_compute() -> None:
     config = load_config(overrides=QLORA_FP16_OVERRIDES)
     assert config.model.quantization == "nf4"
     assert (config.model.dtype, config.train.bf16, config.train.fp16) == ("float16", False, True)
+    assert config.train.fp16_init_scale == 1024
 
 
 def test_qlora_keeps_the_recipe_and_every_guard_setting() -> None:

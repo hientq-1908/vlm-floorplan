@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import shutil
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -19,7 +20,7 @@ from sft_fixture import make_sample, tiny_qwen3_5_model, write_samples
 
 from vlm_floorplan.training.config import TrainConfig, load_config
 from vlm_floorplan.training.data import Sample, render_sample, training_template
-from vlm_floorplan.training.train import run_training
+from vlm_floorplan.training.train import run_training, set_initial_loss_scale
 
 pytestmark = [pytest.mark.hf, pytest.mark.slow]
 
@@ -145,6 +146,16 @@ def test_smoke_run_writes_speed_and_memory_and_no_adapter(
     assert report["dropped_count"] == 1
 
 
+def test_smoke_run_takes_the_configured_steps_with_a_per_device_batch_above_one(
+    tmp_path: Path, train_file: Path, max_length: int
+) -> None:
+    config = tiny_config(tmp_path, train_file, max_length, "train.per_device_batch_size=2")
+    run_dir = run_training(config, smoke=True, model=tiny_qwen3_5_model())
+
+    smoke = json.loads((run_dir / "smoke.json").read_text())
+    assert smoke["optimizer_steps"] == config.smoke.steps
+
+
 def test_smoke_projection_covers_one_epoch_whatever_num_epochs_is(
     tmp_path: Path, train_file: Path, max_length: int
 ) -> None:
@@ -250,3 +261,16 @@ def test_resume_and_smoke_cannot_be_combined(
             resume=True,
             model=tiny_qwen3_5_model(),
         )
+
+
+def test_the_fp16_loss_scaler_starts_at_the_configured_scale() -> None:
+    import torch
+
+    accelerator = SimpleNamespace(scaler=torch.amp.GradScaler("cpu"), device=torch.device("cpu"))
+    set_initial_loss_scale(accelerator, 1024.0)
+    assert accelerator.scaler.get_scale() == 1024.0
+
+
+def test_setting_the_loss_scale_without_an_fp16_scaler_is_an_error() -> None:
+    with pytest.raises(RuntimeError, match="no fp16 loss scaler"):
+        set_initial_loss_scale(SimpleNamespace(scaler=None), 1024.0)
