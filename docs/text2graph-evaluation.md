@@ -71,7 +71,8 @@ A held-out plan is kept only if none of these hold against the train plans:
 The check runs while the pools are built, and again over every final prompt: a violation raises `LeakError` and no set is written.
 The result is in `manifest.json`.
 The structure rule is strict on purpose, so the test set measures generalization and not recall, but it removes many plans of the common apartment types.
-Fewer CubiCasa5K test plans survive than the plan's 58 (every plan must also be one floor, 3 to 16 rooms, fully typed, with no isolated room), so that source gives up to four levels per plan and may still fall short of 150 prompts.
+Fewer CubiCasa5K test plans survive than the 398 in its official test split (every plan must also be one floor, 3 to 16 rooms, fully typed, with no isolated room): 57 are usable and 41 of those pass the leak check, so that source gives up to four levels per plan and may still fall short of 150 prompts.
+The printed room name decides the type of a CubiCasa5K `Room`, `Undefined` and `UserDefined` space, so a change to the Finnish name table changes which plans are usable: rebuild the processed data and these sets after one.
 The manifest has the real counts.
 
 ### The canonical frame

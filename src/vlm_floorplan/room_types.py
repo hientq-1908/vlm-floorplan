@@ -64,7 +64,12 @@ CUBICASA_CLASS_TYPES: dict[str, RoomType] = {
 }
 
 # CubiCasa5K classes that carry no type: the room's printed name decides instead.
+# An unreadable name stays `unknown`.
 CUBICASA_UNLABELED_CLASSES = frozenset({"Undefined", "UserDefined"})
+
+# CubiCasa5K's generic "Room" class: the printed name decides when it is known,
+# otherwise the room is still a labeled room, so it falls back to `other`.
+CUBICASA_GENERIC_CLASSES = frozenset({"Room"})
 
 # Finnish room names and abbreviations as printed on CubiCasa5K plans.
 # A label is split into words ("MH/TYÖH" -> "MH", "TYÖH"); the first word found here wins.
@@ -108,6 +113,14 @@ FINNISH_WORD_TYPES: dict[str, RoomType] = {
     "ULLAKKO": T.OTHER, "KELLARI": T.OTHER, "TOIMISTO": T.OTHER,
 }  # fmt: skip
 
+# Words that name a room only when they are the whole label (numbers aside).
+# "H" (huone, a room) and "AH" (asuinhuone, a habitable room) name a room in a dwelling,
+# but "H" also ends dotted short forms such as "SIIV.H" (siivoushuone, a cleaning room).
+FINNISH_WHOLE_LABEL_TYPES: dict[str, RoomType] = {
+    "H": T.BEDROOM,
+    "AH": T.BEDROOM,
+}
+
 # Compound words ("ALATERASSI" = lower terrace) contain a known word. Only long,
 # unambiguous stems are matched inside words, so "K" never matches inside "KOMERO".
 FINNISH_STEM_TYPES: dict[str, RoomType] = {
@@ -128,6 +141,8 @@ def finnish_label_type(label: str | None) -> RoomType:
     if not label:
         return T.UNKNOWN
     words = [word for word in _WORD_SPLIT.split(label.upper()) if word]
+    if len(words) == 1 and words[0] in FINNISH_WHOLE_LABEL_TYPES:
+        return FINNISH_WHOLE_LABEL_TYPES[words[0]]
     for word in words:
         if word in FINNISH_WORD_TYPES:
             return FINNISH_WORD_TYPES[word]
@@ -149,6 +164,9 @@ def cubicasa_room_type(space_class: str, label: str | None) -> RoomType:
     main = tokens[1]
     if main in CUBICASA_UNLABELED_CLASSES:
         return finnish_label_type(label)
+    if main in CUBICASA_GENERIC_CLASSES:
+        labeled = finnish_label_type(label)
+        return T.OTHER if labeled == T.UNKNOWN else labeled
     # A class we have never seen is still a labeled room, so it is "other", not "unknown".
     return CUBICASA_CLASS_TYPES.get(main, T.OTHER)
 

@@ -156,7 +156,7 @@ The roadmap check found the pitfalls below, and each has a mitigation in the cod
 
 | Pitfall | Evidence | Mitigation |
 |---|---|---|
-| Room-type label noise | About 20% of rooms are `Undefined` or `UserDefined`, and 6% of plans are mostly unlabeled. | Map Finnish names (`MH` is a bedroom, `OH` a living room, `KH` a bathroom, and so on) from the printed text. Anything still unmapped is `unknown`. Plans with more than 50% unknown rooms are flagged `mostly_unlabeled`, and training-data assembly filters on that flag. |
+| Room-type label noise | About 20% of rooms are `Undefined` or `UserDefined`, and 6% of plans are mostly unlabeled. | Map Finnish names (`MH` is a bedroom, `OH` a living room, `KH` a bathroom, and so on) from the printed text, for those classes and for the generic `Room` class (a bare `H` or `AH` is a bedroom). An unmapped `Undefined` or `UserDefined` room is `unknown`; an unmapped `Room` stays `other`. Plans with more than 50% unknown rooms are flagged `mostly_unlabeled`, and training-data assembly filters on that flag. |
 | Multi-floor plans share one image | 63 of 300 sampled plans. | One graph per floor, and no cross-floor links. |
 | Appliance doors | 86% of plans have a fridge door, which is not a passage. | Only wall doors count. |
 | Doors touching one room | 0.6% of wall doors. | The `entrance` flag when the wall is external, and a warning otherwise. |
