@@ -75,6 +75,11 @@ Fewer CubiCasa5K test plans survive than the 398 in its official test split (eve
 The printed room name decides the type of a CubiCasa5K `Room`, `Undefined` and `UserDefined` space, so a change to the Finnish name table changes which plans are usable: rebuild the processed data and these sets after one.
 The manifest has the real counts.
 
+Every draw of the build comes from its own random stream, derived from the seed and string keys (the set, the source, the purpose, and for a prompt its plan id; `text2graph/streams.py`).
+So a change to one source's candidate pool, such as the Finnish name table above, leaves the other sources' selected plans and prompt texts as they were.
+Only the sets that pool plans of every source stay shared: the behavior test (built from the plans no template prompt used) and the paraphrase test.
+Prompt ids (`T0000`, ...) are numbered across sources in order, so they do shift when an earlier source gives more or fewer prompts.
+
 ### The canonical frame
 
 A source plan is rotated to its dominant wall direction, scaled into a 1000 x 1000 canvas with a 60 unit margin, renumbered in reading order, given a size per room (the radius of the equal-area circle), stripped of source labels, and given an exterior wall (the outline of the indoor rooms).

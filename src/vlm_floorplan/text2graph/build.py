@@ -11,7 +11,6 @@ The directory holds the five set files, `references.jsonl`, `reference_tables.js
 from __future__ import annotations
 
 import json
-import random
 import subprocess
 from collections import Counter
 from collections.abc import Callable, Iterable
@@ -50,6 +49,7 @@ from vlm_floorplan.text2graph.sets import (
     build_template_set,
 )
 from vlm_floorplan.text2graph.splits import split_of
+from vlm_floorplan.text2graph.streams import Streams
 
 DEFAULT_SEED = 20261122
 HANDWRITTEN_NOTE = "empty slot: the captain writes 60 prompts (see docs/text2graph-evaluation.md)"
@@ -123,14 +123,14 @@ def build_sets(config: BuildConfig) -> dict[str, Any]:
     log(f"indexing train plans from {len(paths)} files")
     index = build_leak_index(read_records(paths), config.train_texts)
     log(f"train index: {len(index.ids)} plans, {len(index.structures)} structures")
-    rng = random.Random(config.seed)
+    streams = Streams(config.seed)
     rows: dict[str, list[PromptRow]] = {}
     references: dict[str, PlanRecord] = {}
     behavior_plans = []
     for split, name in (("test", "template_test"), ("val", "template_val")):
-        pools = held_out_candidates(read_records(paths), split, index, rng)
+        pools = held_out_candidates(read_records(paths), split, index, streams)
         log(f"{split}: candidates " + ", ".join(f"{s} {len(p)}" for s, p in pools.items()))
-        rows[name] = build_template_set(name, pools, rng, config.quotas, index.texts)
+        rows[name] = build_template_set(name, pools, streams, config.quotas, index.texts)
         for pool in pools.values():
             for candidate in pool:
                 references[candidate.record_id] = candidate.canon.record
@@ -144,14 +144,14 @@ def build_sets(config: BuildConfig) -> dict[str, Any]:
             ] or [(c.record_id, c.source, c.canon.record.graph) for p in pools.values() for c in p]
         log(f"{name}: {len(rows[name])} prompts")
     rows["behavior_test"] = build_behavior_rows(
-        behavior_plans, rng, config.behavior_quotas, index.texts
+        behavior_plans, streams, config.behavior_quotas, index.texts
     )
     rows["paraphrase_test"], teacher_stats = [], {"skipped": "no teacher given"}
     if config.teacher is not None:
         rows["paraphrase_test"], teacher_stats = build_paraphrase_set(
             rows["template_test"],
             config.teacher,
-            rng,
+            streams.rng("paraphrase_test", "paraphrase"),
             config.paraphrase_target,
             index.texts,
             lambda ok, sent: log(f"paraphrase: {ok} accepted of {sent} sent"),

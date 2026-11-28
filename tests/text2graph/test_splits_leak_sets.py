@@ -13,6 +13,7 @@ from vlm_floorplan.text2graph.pools import SourceFiles, build_leak_index, held_o
 from vlm_floorplan.text2graph.rows import read_references, read_rows
 from vlm_floorplan.text2graph.sets import level_sequence, make_prompt
 from vlm_floorplan.text2graph.splits import swiss_split
+from vlm_floorplan.text2graph.streams import Streams
 
 
 def test_swiss_split_is_by_site_and_matches_the_stage_one_training_set():
@@ -102,7 +103,7 @@ def test_held_out_candidates_never_share_a_structure_with_train(tmp_path):
     from vlm_floorplan.text2graph.pools import read_records
 
     index = build_leak_index(read_records(files.paths()))
-    pools = held_out_candidates(read_records(files.paths()), "test", index, random.Random(0))
+    pools = held_out_candidates(read_records(files.paths()), "test", index, Streams(0))
     assert pools["resplan"]
     for candidate in pools["resplan"]:
         assert candidate.record_id not in index.ids
@@ -147,6 +148,48 @@ def test_the_same_seed_builds_the_same_sets(tmp_path):
         build_sets(config)
         texts.append((tmp_path / name / "template_test.jsonl").read_text())
     assert texts[0] == texts[1]
+
+
+def _build_with_cubicasa(tmp_path: Path, name: str, cubicasa_seeds: range):
+    """Builds the sets from a fixed ResPlan pool and a CubiCasa5K pool of the given seeds."""
+    (tmp_path / name).mkdir()
+    files = _files(tmp_path / name)
+    cubicasa = [make_record(seed, "cubicasa5k", "train") for seed in range(40)]
+    cubicasa += [make_record(seed, "cubicasa5k", "test") for seed in cubicasa_seeds]
+    cubicasa += [make_record(seed + 500, "cubicasa5k", "val") for seed in cubicasa_seeds]
+    path = write_split(tmp_path / name / "cubicasa5k.jsonl", cubicasa)
+    out = tmp_path / name / "sets"
+    config = BuildConfig(
+        out_dir=out,
+        files=SourceFiles(resplan_dir=files.resplan_dir, cubicasa_file=path),
+        quotas={"resplan": 12, "cubicasa5k": 60},
+        behavior_quotas={"edit": 3, "restart": 2, "contradiction": 2, "unsupported": 2},
+        log=lambda _message: None,
+    )
+    build_sets(config)
+    return out
+
+
+def _picks(out: Path, name: str, source: str) -> list[tuple[str | None, str, str]]:
+    """The (plan id, level, text) of a set's prompts of one source, ids of the rows left out."""
+    return [
+        (r.record_id, str(r.level), r.text)
+        for r in read_rows(out / f"{name}.jsonl")
+        if r.source == source
+    ]
+
+
+def test_a_change_to_one_sources_pool_leaves_the_other_sources_sets_unchanged(tmp_path):
+    small = _build_with_cubicasa(tmp_path, "small", range(3000, 3006))
+    large = _build_with_cubicasa(tmp_path, "large", range(3000, 3012))
+    assert {p[0] for p in _picks(small, "template_test", "cubicasa5k")} != {
+        p[0] for p in _picks(large, "template_test", "cubicasa5k")
+    }
+    for name in ("template_test", "template_val"):
+        assert _picks(small, name, "resplan")
+        assert _picks(small, name, "resplan") == _picks(large, name, "resplan")
+    assert _picks(small, "behavior_test", "resplan")
+    assert read_rows(small / "behavior_test.jsonl") == read_rows(large / "behavior_test.jsonl")
 
 
 def test_a_prompt_text_equal_to_a_train_prompt_is_drawn_again():
